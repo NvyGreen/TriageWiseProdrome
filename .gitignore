@@ -1,4 +1,49 @@
+# =========================================================================
+# FRONTEND (React / Vite - Fully Preserved)
+# =========================================================================
+# Logs
+frontend/logs
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# Dependencies and Build
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Environment Variables
+frontend/*.local
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# =========================================================================
+# BACKEND (FastAPI / Python)
+# =========================================================================
+backend/venv/
+backend/.venv/
+backend/env/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# =========================================================================
+# GENERAL / SYSTEM / EDITORS
+# =========================================================================
+.DS_Store
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 .venv
-.env
 __pycache__/
-*.pyc
+
+# VS Code settings
+.vscode/*
+!.vscode/extensions.json

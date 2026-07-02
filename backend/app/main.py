@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from .config import get_settings, Settings
 
-app = FastAPI(title="TriageWiseProdrome")
+app = FastAPI()
 
 @app.get("/")
-def root():
-    return {"message": "TriageWiseProdrome API is running"}
+def root(settings: Settings = Depends(get_settings)):
+    return {
+        "message": f"{settings.app_name} API is running"
+    }

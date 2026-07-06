@@ -2,6 +2,8 @@ fastapi[standard]
 sqlalchemy
 alembic
 pydantic
+pydantic-settings
+psycopg2-binary
 uvicorn
 pytest
 python-dotenv

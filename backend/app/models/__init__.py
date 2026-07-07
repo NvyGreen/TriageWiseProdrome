@@ -5,6 +5,7 @@ from app.models.triage_queue import TriageQueue
 from app.models.case_update import CaseUpdate
 from app.models.ai_explanation import AIExplanation
 from app.models.override import Override
+from app.models.system_metric import SystemMetric
 
 from app.database import Base
 metadata = Base.metadata

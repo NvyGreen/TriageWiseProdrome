@@ -6,6 +6,7 @@ from app.models.case_update import CaseUpdate
 from app.models.ai_explanation import AIExplanation
 from app.models.override import Override
 from app.models.system_metric import SystemMetric
+from app.models.event_log import EventLog
 
 from app.database import Base
 metadata = Base.metadata

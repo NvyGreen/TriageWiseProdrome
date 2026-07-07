@@ -7,6 +7,7 @@ from app.models.ai_explanation import AIExplanation
 from app.models.override import Override
 from app.models.system_metric import SystemMetric
 from app.models.event_log import EventLog
+from app.models.idempotency_key import IdempotencyKey
 
 from app.database import Base
 metadata = Base.metadata

@@ -15,6 +15,7 @@ from app.models.vital_range import VitalRange
 from app.models.esi_band import ESIBand
 from app.models.guideline_snippet import GuidelineSnippet
 from app.models.retrieval_log import RetrievalLog
+from app.models.feedback_session import FeedbackSession
 
 from app.database import Base
 metadata = Base.metadata

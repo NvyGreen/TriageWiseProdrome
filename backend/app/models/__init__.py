@@ -9,6 +9,7 @@ from app.models.system_metric import SystemMetric
 from app.models.event_log import EventLog
 from app.models.idempotency_key import IdempotencyKey
 from app.models.condition_reference import ConditionReference
+from app.models.scoring_rule import ScoringRule
 
 from app.database import Base
 metadata = Base.metadata

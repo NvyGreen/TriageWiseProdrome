@@ -11,6 +11,7 @@ from app.models.idempotency_key import IdempotencyKey
 from app.models.condition_reference import ConditionReference
 from app.models.scoring_rule import ScoringRule
 from app.models.red_flag_rule import RedFlagRule
+from app.models.vital_range import VitalRange
 
 from app.database import Base
 metadata = Base.metadata

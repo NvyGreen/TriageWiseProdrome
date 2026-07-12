@@ -30,6 +30,7 @@ backend/env/
 backend/__pycache__/
 backend/*.pyc
 backend/.env
+backend/raw_data/*.dta
 
 # =========================================================================
 # GENERAL / SYSTEM / EDITORS

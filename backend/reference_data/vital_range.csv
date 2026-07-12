@@ -1,0 +1,21 @@
+vital_range_id,vital_name,age_group,label,min_value,max_value,unit,source
+1,heart_rate,adult,normal,60,100,bpm,AHA adult vitals
+2,heart_rate,adult,borderline,100,120,bpm,matches scoring_rule
+3,heart_rate,adult,abnormal_high,120,,bpm,tachycardia (flag 9)
+4,heart_rate,infant,normal,100,160,bpm,PALS (<3mo)
+5,respiratory_rate,adult,normal,12,20,/min,AHA adult
+6,respiratory_rate,adult,borderline,20,24,/min,mild tachypnea
+7,respiratory_rate,adult,abnormal_high,24,,/min,tachypnea
+8,spo2,adult,normal,95,100,%,AHA / general
+9,spo2,adult,borderline,92,94,%,matches scoring_rule
+10,spo2,adult,abnormal_low,,92,%,hypoxia
+11,systolic_bp,adult,normal,90,139,mmHg,AHA adult
+12,systolic_bp,adult,borderline_high,140,179,mmHg,flag 6 (>=140); scoring 17.a
+13,systolic_bp,adult,abnormal_high,180,,mmHg,severe HTN
+14,systolic_bp,adult,abnormal_low,,90,mmHg,hypotension (flag 9)
+15,temperature,adult,normal,97,99.5,°F,general clinical
+16,temperature,adult,fever,100.9,,°F,>=38.3C (flag 10)
+17,temperature,infant,fever,100.4,,°F,>=38.0C (flag 8)
+18,pain,adult,normal,0,3,score,0-10 scale
+19,pain,adult,moderate,4,6,score,—
+20,pain,adult,severe,7,10,score,flag 3 (pain>=7); scoring 7

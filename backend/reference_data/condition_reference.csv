@@ -1,0 +1,12 @@
+condition_reference_id,condition,match_type,complaint_key,context_condition,icd10_prefixes,visits,admitted,admit_rate,reliable,triage_note,source_label
+1,Chest pain (all causes),complaint,chest_pain,Acute MI,R07,794,109,0.1373,yes,matches intake chief complaint,NHAMCS 2022
+2,Chest pain + cardiac dx,diagnosis,,,R07;I20;I21;I22;I23;I24;I25,910,175,0.1923,yes,context only — not known at intake,NHAMCS 2022
+3,Acute MI,diagnosis,,,I21;I22,64,45,0.7031,yes,context only — dangerous subset of chest pain,NHAMCS 2022
+4,Sepsis / severe infection,diagnosis,,,A40;A41;R65,113,96,0.8496,yes,context only — not known at intake,NHAMCS 2022
+5,Stroke / TIA,complaint,stroke_symptoms,,I60;I61;I62;I63;I64;G45,100,53,0.53,yes,matches FAST complaint at intake,NHAMCS 2022
+6,Shortness of breath,complaint,shortness_of_breath,Pneumonia,R06,384,99,0.2578,yes,matches intake chief complaint,NHAMCS 2022
+7,Pneumonia,diagnosis,,,J12;J13;J14;J15;J16;J17;J18,237,129,0.5443,yes,context only — not known at intake,NHAMCS 2022
+8,Syncope (fainting),complaint,syncope,,R55,234,48,0.2051,yes,matches intake chief complaint,NHAMCS 2022
+9,Abdominal pain (all causes),complaint,abdominal_pain,,R10,1096,100,0.0912,yes,matches intake chief complaint,NHAMCS 2022
+10,Pre-eclampsia / eclampsia,diagnosis,,,O11;O12;O13;O14;O15;O16,15,4,0.2667,low-n (<30),context only (also low-n),NHAMCS 2022
+11,Postpartum hemorrhage,diagnosis,,,O72,2,0,0,low-n (<30),context only (also low-n),NHAMCS 2022

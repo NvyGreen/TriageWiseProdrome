@@ -1,0 +1,17 @@
+rule_id,factor,threshold,weight
+1,SpO2,< 92%,4
+2,SpO2,92-94% (borderline),2
+3,Heart rate,> 120 bpm,3
+4,Heart rate,100-120 bpm,1
+5,Respiratory rate,> 24 /min,3
+6,Systolic BP,< 90 mmHg,4
+7,Pain score,>= 7/10,1
+8,Chief complaint,stroke symptoms (FAST),6
+9,Chief complaint,chest pain (cardiac concern),6
+10,Chief complaint,shortness of breath,4
+11,Chief complaint,severe headache / neuro,4
+12,Chief complaint,abdominal pain,2
+13,Chief complaint,other / general,1
+14,Chief complaint,"minor injury (sprain, small laceration)",1
+15,Chief complaint,"minor complaint (rash, med refill, cold)",1
+16,Chief complaint,syncope (fainting),3

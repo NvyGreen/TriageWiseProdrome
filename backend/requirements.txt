@@ -7,3 +7,4 @@ psycopg2-binary
 uvicorn
 pytest
 python-dotenv
+pandas

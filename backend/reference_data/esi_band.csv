@@ -1,0 +1,6 @@
+band_id,min_points,max_points,esi_level,priority,meaning
+1,8,99,ESI-1,Highest,Immediate — resuscitation
+2,6,7,ESI-2,High,Emergent — rapid placement
+3,3,5,ESI-3,Medium,Urgent — needs resources
+4,1,2,ESI-4,Low,Less urgent — one resource
+5,0,0,ESI-5,Lowest,Non-urgent — fast-track

@@ -1,14 +1,21 @@
-from fastapi import FastAPI, Depends
+import uuid
+from fastapi import FastAPI, Request, status, Depends
+from fastapi.exceptions import RequestValidationError, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+
 from .config import get_settings, Settings
 from .database import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
+from .routers import patients
 
 
 class MedicalDisclaimerResponse(JSONResponse):
     def render(self, content):
+        if isinstance(content, dict) and "error" in content:
+            return super().render(content)
+        
         wrapped_content = {
             "payload": content,
             "meta": {
@@ -18,6 +25,101 @@ class MedicalDisclaimerResponse(JSONResponse):
         return super().render(wrapped_content)
 
 app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+patients_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+
+@patients_app.exception_handler(RequestValidationError)
+async def patients_validation_handler(request: Request, exc: RequestValidationError):
+    details = []
+    for error in exc.errors():
+        loc = error.get("loc", ())
+        if not loc:
+            continue
+        if isinstance(loc[-1], int):
+            field_name = loc[-2] if len(loc) > 1 else "body"
+        else:
+            field_name = loc[-1]
+        
+        error_type = error.get("type")
+        raw_ctx = error.get("ctx", {})
+        issue_msg = error["msg"].replace("Value error, ", "").lower()
+
+        if error_type == "missing":
+            issue_msg = "missing required field"
+        elif error_type in ("int_type", "int_parsing"):
+            issue_msg = "must be an integer"
+        elif error_type in ("float_type", "float_parsing"):
+            issue_msg = "must be a valid number"
+        elif error_type == "date_type":
+            issue_msg = "must be a valid date (YYYY-MM-DD)"
+        elif error_type == "bool_type":
+            issue_msg = "must be a boolean value (true/false)"
+        elif error_type == "enum":
+            allowed = raw_ctx.get("expected", "").replace("'", "")
+            issue_msg = f"invalid selection. must be one of: {allowed}"
+        elif error_type in ("greater_than_equal", "greater_than"):
+            limit = raw_ctx.get("ge") if raw_ctx.get("ge") is not None else raw_ctx.get("gt")
+            issue_msg = f"must be greater than or equal to {limit}"
+        elif error_type in ("less_than_equal", "less_than"):
+            limit = raw_ctx.get("le") if raw_ctx.get("le") is not None else raw_ctx.get("lt")
+            issue_msg = f"must be less than or equal to {limit}"
+
+        details.append({"field": str(field_name), "issue": issue_msg})
+
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": {
+                "code": "invalid_input",
+                "message": "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital",
+                "details": details,
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
+
+@patients_app.exception_handler(HTTPException)
+async def patient_not_found_handler(request: Request, exc: HTTPException):
+    if exc.status_code == 404:
+        return JSONResponse(
+            status_code = status.HTTP_404_NOT_FOUND,
+            content={
+                "error": {
+                    "code": "not_found",
+                    "message": "Unknown patient_id",
+                    "request_id": f"req_{uuid.uuid4().hex[:12]}"
+                }
+            }
+        )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+@patients_app.exception_handler(patients.DuplicateRequestException)
+async def patient_duplicate_handler(request: Request, exc: patients.DuplicateRequestException):
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "error": {
+                "code": "duplicate_request",
+                "message": "Idempotency conflict — same intake POSTed twice (same Idempotency-Key, or identical intake within a short window)",
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
+
+@patients_app.exception_handler(patients.UnscoreableException)
+async def patient_unscoreable_handler(request: Request, exc: patients.UnscoreableException):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={
+            "error": {
+                "code": "unscoreable",
+                "message": "Body is well-formed but cannot be scored — e.g. no chief complaint mapping, or so much missing data that no rule can fire",
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
+
+patients_app.include_router(patients.router)
+app.mount("/patients", patients_app)
 
 @app.get("/")
 def root(settings: Settings = Depends(get_settings)):

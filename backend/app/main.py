@@ -1,11 +1,23 @@
 from fastapi import FastAPI, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from .config import get_settings, Settings
 from .database import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
 
-app = FastAPI()
+
+class MedicalDisclaimerResponse(JSONResponse):
+    def render(self, content):
+        wrapped_content = {
+            "payload": content,
+            "meta": {
+                "disclaimer": "simplified/educational, not clinically validated; explains & prioritizes, does not diagnose."
+            }
+        }
+        return super().render(wrapped_content)
+
+app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 
 @app.get("/")
 def root(settings: Settings = Depends(get_settings)):

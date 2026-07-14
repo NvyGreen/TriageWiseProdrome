@@ -1,0 +1,36 @@
+{
+  "patient": {
+    "patient_id": 124,
+    "name": "Robert Johnson",
+    "age": 67,
+    "date_of_birth": "1958-03-12",
+    "sex": "M",
+    "created_at": "2025-05-31T10:24:00Z",
+    "updated_at": "2025-05-31T10:24:00Z"
+  },
+  "intake_record": {
+    "intake_id": 501,
+    "patient_id": 124,
+    "chief_complaint": "chest_pain",
+    "symptoms": ["chest_pain", "dizziness"],
+    "heart_rate": 120,
+    "blood_pressure_systolic": 140,
+    "blood_pressure_diastolic": 90,
+    "temperature": 101.2,
+    "oxygen_saturation": null,
+    "respiration_rate": null,
+    "pain_level": 7,
+    "blood_sugar": 180.0,
+    "missing_fields": ["oxygen_saturation", "respiration_rate"],
+    "pregnancy_status": "none",
+    "pre_existing_conditions": ["diabetes", "prior_mi"],
+    "arrival_by_ambulance": false,
+    "recent_ed_visit_72h": false,
+    "injury_related": false,
+    "source": "form",
+    "external_patient_id": null,
+    "actual_outcome": null,
+    "outcome_source": null,
+    "created_at": "2025-05-31T10:24:00Z"
+  }
+}

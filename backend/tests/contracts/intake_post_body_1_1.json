@@ -1,0 +1,21 @@
+{
+  "name": "Robert Johnson",
+  "date_of_birth": "1958-03-12",
+  "sex": "M",
+  "chief_complaint": "chest_pain",
+  "symptoms": ["chest_pain", "dizziness"],
+  "heart_rate": 120,
+  "blood_pressure_systolic": 140,
+  "blood_pressure_diastolic": 90,
+  "temperature": 101.2,
+  "oxygen_saturation": null,
+  "respiration_rate": null,
+  "pain_level": 7,
+  "blood_sugar": 180.0,
+  "pregnancy_status": "none",
+  "pre_existing_conditions": ["diabetes", "prior_mi"],
+  "arrival_by_ambulance": false,
+  "recent_ed_visit_72h": false,
+  "injury_related": false,
+  "source": "form"
+}

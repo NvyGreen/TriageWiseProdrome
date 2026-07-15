@@ -7,7 +7,8 @@
       "Every route calls exactly one TriageService method (see endpoint_method_map).",
       "All errors use the consistent error envelope: { error: { code, message, details?, request_id } }.",
       "POST /patients accepts an Idempotency-Key header; a repeat with the same key returns the original result, a different intake colliding on the dedup window returns 409.",
-      "Fields marked with a sibling key ending in _INFERRED are Claude's plausible guesses where v30 named the view-model but not the exact sub-fields — verify against the real schema and delete the _INFERRED markers once confirmed."
+      "Fields marked with a sibling key ending in _INFERRED are Claude's plausible guesses where v30 named the view-model but not the exact sub-fields — verify against the real schema and delete the _INFERRED markers once confirmed.",
+      "POST /patients body matches the IntakeCreate Pydantic model: single 'name' field, FLAT vitals (no nested 'vitals' object), no 'notes' field. Client does not send patient_id/intake_id/timestamps."
     ],
     "endpoint_method_map": {
       "POST /patients": "submitIntake(data)",
@@ -18,34 +19,38 @@
       "GET /reference/complaints": "getComplaintOptions()"
     }
   },
-
   "POST /patients": {
     "method": "submitIntake(data)",
     "valid_201": {
       "request": {
-        "headers": { "Idempotency-Key": "req_01H9XYZ_ab12cd34" },
+        "headers": {
+          "Idempotency-Key": "req_01H9XYZ_ab12cd34"
+        },
         "body": {
-          "first_name": "Jordan",
-          "last_name": "Ellis",
+          "name": "Jordan Ellis",
           "date_of_birth": "1958-03-14",
           "sex": "M",
           "chief_complaint": "chest_pain",
-          "symptoms": ["chest tightness", "left arm discomfort"],
-          "notes": "Onset ~40 min ago, came by private car.",
-          "vitals": {
-            "heart_rate": 96,
-            "blood_pressure_systolic": 138,
-            "blood_pressure_diastolic": 84,
-            "respiration_rate": 18,
-            "oxygen_saturation": 97,
-            "temperature": 98.6,
-            "pain_level": 6
-          },
+          "symptoms": [
+            "chest tightness",
+            "left arm discomfort"
+          ],
+          "heart_rate": 96,
+          "blood_pressure_systolic": 138,
+          "blood_pressure_diastolic": 84,
+          "temperature": 98.6,
+          "oxygen_saturation": 97,
+          "respiration_rate": 18,
+          "pain_level": 6,
+          "blood_sugar": null,
           "pregnancy_status": "none",
-          "pre_existing_conditions": ["hypertension"],
+          "pre_existing_conditions": [
+            "hypertension"
+          ],
           "arrival_by_ambulance": false,
           "recent_ed_visit_72h": false,
-          "injury_related": false
+          "injury_related": false,
+          "source": "form"
         }
       },
       "response": {
@@ -62,7 +67,12 @@
           },
           "queue_placement": {
             "position": 3,
-            "sort_key_INFERRED": [2, 9999, "2026-07-14T10:22:00Z", 8837]
+            "sort_key_INFERRED": [
+              2,
+              9999,
+              "2026-07-14T10:22:00Z",
+              8837
+            ]
           }
         }
       }
@@ -70,11 +80,20 @@
     "invalid_400": {
       "_why": "Malformed / wrong types / out-of-range vital. 'I can't read this request.'",
       "request": {
-        "headers": { "Idempotency-Key": "req_01H9XYZ_bad400" },
+        "headers": {
+          "Idempotency-Key": "req_01H9XYZ_bad400"
+        },
         "body": {
+          "name": "Test Case",
+          "date_of_birth": "1970-01-01",
+          "sex": "M",
           "chief_complaint": "chest_pain",
-          "symptoms": ["chest tightness"],
-          "vitals": { "heart_rate": "ninety", "oxygen_saturation": 150, "pain_level": 15 }
+          "symptoms": [
+            "chest tightness"
+          ],
+          "heart_rate": "ninety",
+          "oxygen_saturation": 150,
+          "pain_level": 15
         }
       },
       "response": {
@@ -82,11 +101,20 @@
         "body": {
           "error": {
             "code": "invalid_input",
-            "message": "One or more fields are invalid.",
+            "message": "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital",
             "details": [
-              { "field": "heart_rate", "issue": "must be a positive integer" },
-              { "field": "oxygen_saturation", "issue": "must be between 0 and 100" },
-              { "field": "pain_level", "issue": "must be between 0 and 10" }
+              {
+                "field": "heart_rate",
+                "issue": "must be a positive integer"
+              },
+              {
+                "field": "oxygen_saturation",
+                "issue": "must be between 0 and 100"
+              },
+              {
+                "field": "pain_level",
+                "issue": "must be between 0 and 10"
+              }
             ],
             "request_id": "req_01H9XYZ_bad400"
           }
@@ -96,17 +124,24 @@
     "conflict_409": {
       "_why": "Same Idempotency-Key (or identical intake within the dedup window) POSTed twice.",
       "request": {
-        "headers": { "Idempotency-Key": "req_01H9XYZ_ab12cd34" },
-        "body": { "note": "identical to valid_201 intake, retried" }
+        "headers": {
+          "Idempotency-Key": "req_01H9XYZ_ab12cd34"
+        },
+        "body": {
+          "_note": "identical to valid_201 intake, retried with same Idempotency-Key"
+        }
       },
       "response": {
         "status": 409,
         "body": {
           "error": {
             "code": "duplicate_request",
-            "message": "This intake was already submitted.",
+            "message": "Idempotency conflict — same intake POSTed twice (same Idempotency-Key, or identical intake within a short window)",
             "details": [
-              { "field": "Idempotency-Key", "issue": "already used for a prior request" }
+              {
+                "field": "Idempotency-Key",
+                "issue": "already used for a prior request"
+              }
             ],
             "request_id": "req_01H9XYZ_dup"
           }
@@ -116,11 +151,15 @@
     "unscoreable_422": {
       "_why": "Well-formed body, but nothing can be scored — no chief-complaint mapping or too little data for any rule to fire. 'I read it fine, but it can't be scored.'",
       "request": {
-        "headers": { "Idempotency-Key": "req_01H9XYZ_unscore" },
+        "headers": {
+          "Idempotency-Key": "req_01H9XYZ_unscore"
+        },
         "body": {
+          "name": "Minimal Case",
+          "date_of_birth": "1990-05-05",
+          "sex": "unknown",
           "chief_complaint": "other_general",
-          "symptoms": [],
-          "vitals": {}
+          "symptoms": []
         }
       },
       "response": {
@@ -128,9 +167,12 @@
         "body": {
           "error": {
             "code": "unscoreable",
-            "message": "The intake is valid but cannot be scored: no rule can fire on the provided data.",
+            "message": "Body is well-formed but cannot be scored — e.g. no chief complaint mapping, or so much missing data that no rule can fire",
             "details": [
-              { "field": "vitals", "issue": "no vitals present and complaint has no standalone weight sufficient to score" }
+              {
+                "field": "vitals",
+                "issue": "no vitals present and complaint has no standalone weight sufficient to score"
+              }
             ],
             "request_id": "req_01H9XYZ_unscore"
           }
@@ -138,12 +180,16 @@
       }
     }
   },
-
   "GET /queue": {
     "method": "getQueue()",
-    "query_params": ["?filter", "?status"],
+    "query_params": [
+      "?filter",
+      "?status"
+    ],
     "valid_200": {
-      "request": { "path": "/queue?status=waiting" },
+      "request": {
+        "path": "/queue?status=waiting"
+      },
       "response": {
         "status": 200,
         "body": [
@@ -172,7 +218,9 @@
     },
     "invalid_400": {
       "_why": "Bad filter value.",
-      "request": { "path": "/queue?status=on_fire" },
+      "request": {
+        "path": "/queue?status=on_fire"
+      },
       "response": {
         "status": 400,
         "body": {
@@ -180,7 +228,10 @@
             "code": "invalid_input",
             "message": "Unknown filter value.",
             "details": [
-              { "field": "status", "issue": "must be one of: waiting, in_progress, dispositioned" }
+              {
+                "field": "status",
+                "issue": "must be one of: waiting, in_progress, dispositioned"
+              }
             ],
             "request_id": "req_01H9XYZ_q400"
           }
@@ -188,12 +239,15 @@
       }
     }
   },
-
   "GET /patients/{id}": {
     "method": "getPatientDetail(patientId)",
-    "query_params": ["?mode=xai|blackbox"],
+    "query_params": [
+      "?mode=xai|blackbox"
+    ],
     "valid_200": {
-      "request": { "path": "/patients/4021?mode=xai" },
+      "request": {
+        "path": "/patients/4021?mode=xai"
+      },
       "response": {
         "status": 200,
         "body": {
@@ -206,7 +260,10 @@
           },
           "intake": {
             "chief_complaint": "chest_pain",
-            "symptoms": ["chest tightness", "left arm discomfort"],
+            "symptoms": [
+              "chest tightness",
+              "left arm discomfort"
+            ],
             "vitals": {
               "heart_rate": 96,
               "blood_pressure_systolic": 138,
@@ -227,7 +284,11 @@
           "explanation_INFERRED": {
             "data_completeness": "high",
             "drivers": [
-              { "factor": "chief_complaint", "rule": "chest pain (cardiac concern)", "points": 6 }
+              {
+                "factor": "chief_complaint",
+                "rule": "chest pain (cardiac concern)",
+                "points": 6
+              }
             ],
             "gap": "No missing vitals; all rules evaluated.",
             "fallback": "None applied."
@@ -239,21 +300,27 @@
     },
     "not_found_404": {
       "_why": "Unknown patient_id.",
-      "request": { "path": "/patients/999999" },
+      "request": {
+        "path": "/patients/999999"
+      },
       "response": {
         "status": 404,
         "body": {
           "error": {
             "code": "not_found",
             "message": "No patient with that id.",
-            "details": [ { "field": "patient_id", "issue": "999999 does not exist" } ],
+            "details": [
+              {
+                "field": "patient_id",
+                "issue": "999999 does not exist"
+              }
+            ],
             "request_id": "req_01H9XYZ_p404"
           }
         }
       }
     }
   },
-
   "POST /overrides": {
     "method": "applyOverride(severityId, clinicianESI, reasonCode, note)",
     "valid_201": {
@@ -279,14 +346,24 @@
     },
     "invalid_400": {
       "_why": "Malformed override body / bad ESI value.",
-      "request": { "body": { "severity_id": 8837, "clinician_esi": 9 } },
+      "request": {
+        "body": {
+          "severity_id": 8837,
+          "clinician_esi": 9
+        }
+      },
       "response": {
         "status": 400,
         "body": {
           "error": {
             "code": "invalid_input",
-            "message": "Override body is invalid.",
-            "details": [ { "field": "clinician_esi", "issue": "must be between 1 and 5" } ],
+            "message": "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital",
+            "details": [
+              {
+                "field": "clinician_esi",
+                "issue": "must be between 1 and 5"
+              }
+            ],
             "request_id": "req_01H9XYZ_o400"
           }
         }
@@ -294,14 +371,25 @@
     },
     "not_found_404": {
       "_why": "Unknown severity_id (override targets a score that doesn't exist).",
-      "request": { "body": { "severity_id": 999999, "clinician_esi": 2, "reason_code": "clinical_judgment" } },
+      "request": {
+        "body": {
+          "severity_id": 999999,
+          "clinician_esi": 2,
+          "reason_code": "clinical_judgment"
+        }
+      },
       "response": {
         "status": 404,
         "body": {
           "error": {
             "code": "not_found",
             "message": "No severity record with that id.",
-            "details": [ { "field": "severity_id", "issue": "999999 does not exist" } ],
+            "details": [
+              {
+                "field": "severity_id",
+                "issue": "999999 does not exist"
+              }
+            ],
             "request_id": "req_01H9XYZ_o404"
           }
         }
@@ -309,33 +397,63 @@
     },
     "conflict_409": {
       "_why": "Idempotency conflict on override retry.",
-      "request": { "body": { "severity_id": 8837, "clinician_esi": 1, "reason_code": "clinical_judgment", "note": "duplicate submit" } },
+      "request": {
+        "body": {
+          "severity_id": 8837,
+          "clinician_esi": 1,
+          "reason_code": "clinical_judgment",
+          "note": "duplicate submit"
+        }
+      },
       "response": {
         "status": 409,
         "body": {
           "error": {
             "code": "duplicate_request",
-            "message": "This override was already applied.",
-            "details": [ { "field": "severity_id", "issue": "an identical override is already recorded" } ],
+            "message": "Idempotency conflict — same intake POSTed twice (same Idempotency-Key, or identical intake within a short window)",
+            "details": [
+              {
+                "field": "severity_id",
+                "issue": "an identical override is already recorded"
+              }
+            ],
             "request_id": "req_01H9XYZ_o409"
           }
         }
       }
     }
   },
-
   "GET /metrics": {
     "method": "getMetrics()",
-    "query_params": ["?range"],
+    "query_params": [
+      "?range"
+    ],
     "valid_200": {
-      "request": { "path": "/metrics?range=7d" },
+      "request": {
+        "path": "/metrics?range=7d"
+      },
       "response": {
         "status": 200,
         "body_INFERRED": {
           "range": "7d",
-          "counts": { "total_intakes": 214, "by_esi": { "1": 6, "2": 41, "3": 118, "4": 39, "5": 10 } },
-          "latency_ms": { "p50": 42, "p95": 118 },
-          "ranking": { "under_triage_rate": 0.04, "auc": 0.86 },
+          "counts": {
+            "total_intakes": 214,
+            "by_esi": {
+              "1": 6,
+              "2": 41,
+              "3": 118,
+              "4": 39,
+              "5": 10
+            }
+          },
+          "latency_ms": {
+            "p50": 42,
+            "p95": 118
+          },
+          "ranking": {
+            "under_triage_rate": 0.04,
+            "auc": 0.86
+          },
           "throughput_rps": 180,
           "red_flag_catch_rate": 0.92
         }
@@ -343,37 +461,81 @@
     },
     "invalid_400": {
       "_why": "Bad range value.",
-      "request": { "path": "/metrics?range=banana" },
+      "request": {
+        "path": "/metrics?range=banana"
+      },
       "response": {
         "status": 400,
         "body": {
           "error": {
             "code": "invalid_input",
             "message": "Unknown range.",
-            "details": [ { "field": "range", "issue": "must be one of: 24h, 7d, 30d" } ],
+            "details": [
+              {
+                "field": "range",
+                "issue": "must be one of: 24h, 7d, 30d"
+              }
+            ],
             "request_id": "req_01H9XYZ_m400"
           }
         }
       }
     }
   },
-
   "GET /reference/complaints": {
     "method": "getComplaintOptions()",
     "valid_200": {
-      "request": { "path": "/reference/complaints" },
+      "request": {
+        "path": "/reference/complaints"
+      },
       "response": {
         "status": 200,
         "body": [
-          { "label": "Chest pain", "complaint_key": "chest_pain", "complaint_group": "cardiac" },
-          { "label": "Stroke symptoms", "complaint_key": "stroke_symptoms", "complaint_group": "stroke" },
-          { "label": "Shortness of breath", "complaint_key": "shortness_of_breath", "complaint_group": "respiratory" },
-          { "label": "Severe headache", "complaint_key": "severe_headache", "complaint_group": "neuro" },
-          { "label": "Syncope", "complaint_key": "syncope", "complaint_group": "syncope" },
-          { "label": "Abdominal pain", "complaint_key": "abdominal_pain", "complaint_group": "abdominal" },
-          { "label": "Minor injury", "complaint_key": "minor_injury", "complaint_group": "minor_injury" },
-          { "label": "Minor complaint", "complaint_key": "minor_complaint", "complaint_group": "minor_general" },
-          { "label": "Other / general", "complaint_key": "other_general", "complaint_group": "general" }
+          {
+            "label": "Chest pain",
+            "complaint_key": "chest_pain",
+            "complaint_group": "cardiac"
+          },
+          {
+            "label": "Stroke symptoms",
+            "complaint_key": "stroke_symptoms",
+            "complaint_group": "stroke"
+          },
+          {
+            "label": "Shortness of breath",
+            "complaint_key": "shortness_of_breath",
+            "complaint_group": "respiratory"
+          },
+          {
+            "label": "Severe headache",
+            "complaint_key": "severe_headache",
+            "complaint_group": "neuro"
+          },
+          {
+            "label": "Syncope",
+            "complaint_key": "syncope",
+            "complaint_group": "syncope"
+          },
+          {
+            "label": "Abdominal pain",
+            "complaint_key": "abdominal_pain",
+            "complaint_group": "abdominal"
+          },
+          {
+            "label": "Minor injury",
+            "complaint_key": "minor_injury",
+            "complaint_group": "minor_injury"
+          },
+          {
+            "label": "Minor complaint",
+            "complaint_key": "minor_complaint",
+            "complaint_group": "minor_general"
+          },
+          {
+            "label": "Other / general",
+            "complaint_key": "other_general",
+            "complaint_group": "general"
+          }
         ]
       }
     }

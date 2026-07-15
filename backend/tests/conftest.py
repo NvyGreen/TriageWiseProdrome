@@ -121,3 +121,14 @@ def client():
 def intake_body():
     data = json.loads((CONTRACTS / "intake_post_body_1_1.json").read_text())
     return copy.deepcopy(data)
+
+
+@pytest.fixture
+def api_examples():
+    """The full endpoint contract (request/response examples per scenario).
+
+    Use its request bodies as test inputs; assert responses against
+    API_Reference_v30.md (the source of truth), not this file's guessed values.
+    """
+    data = json.loads((CONTRACTS / "api_examples.json").read_text())
+    return copy.deepcopy(data)

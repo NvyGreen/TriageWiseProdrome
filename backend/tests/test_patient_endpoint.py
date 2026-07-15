@@ -1,100 +1,97 @@
-def test_submit_proper_intake_form(client):
-    input = {
-        "name":  "Robert Johnson",
-        "date_of_birth": "1958-03-12",
-        "sex": "M",
-        "chief_complaint": "chest_pain",
-        "symptoms": [
-            "chest_pain",
-            "dizziness"
-        ],
-        "heart_rate": 120,
-        "blood_pressure_systolic": 140,
-        "blood_pressure_diastolic": 90,
-        "temperature": 101.2,
-        "oxygen_saturation": None,
-        "respiration_rate": None,
-        "pain_level": 7,
-        "blood_sugar": 180,
-        "pregnancy_status": "none",
-        "pre_existing_conditions": [
-            "diabetes",
-            "prior_mi"
-        ],
-        "arrival_by_ambulance": False,
-        "recent_ed_visit_72h": False,
-        "injury_related": False,
-        "source": "form"
-    }
+"""Endpoint tests for POST /patients, driven by the API contract.
 
-    response = client.post("/patients", json=input)
-    body = response.json()
-    assert "payload" in body
-    payload = body["payload"]
-    assert "message" in payload
-    assert payload["message"] == "Intake recorded successfully"
-    assert "record" in payload
-    record = payload["record"]
-    assert record["heart_rate"] == 120
-    assert record["arrival_by_ambulance"] == False
+Inputs come from tests/contracts/api_examples.json; response assertions follow
+API_Reference_v30.md (the source of truth). Where api_examples.json's guessed
+values disagree with v30, v30 wins.
 
-def test_submit_malformed_intake_form(client):
-    # No complaint
-    # Invalid heart rate type
-    # Too-high o2sat
-    # Negative pain
-    # Invalid pre-existing conditions
-    input = {
-        "name":  "Robert Johnson",
-        "date_of_birth": "1958-03-12",
-        "sex": "M",
-        "symptoms": [
-            "chest_pain",
-            "dizziness"
-        ],
-        "heart_rate": "abc",
-        "blood_pressure_systolic": 140,
-        "blood_pressure_diastolic": 90,
-        "temperature": 101.2,
-        "oxygen_saturation": 101,
-        "respiration_rate": None,
-        "pain_level": -1,
-        "blood_sugar": 180,
-        "pregnancy_status": "none",
-        "pre_existing_conditions": [
-            "fatigue"
-        ],
-        "arrival_by_ambulance": False,
-        "recent_ed_visit_72h": False,
-        "injury_related": False,
-        "source": "form"
-    }
+Readiness of POST /patients today:
+  - 400 validation  -> implemented (app/main.py patients_validation_handler)  -> real test
+  - 201 success     -> NOT implemented (returns a 200 placeholder)            -> xfail
+  - 409 / 422       -> handlers exist but triggers are commented out          -> skip
 
-    response = client.post("/patients", json=input)
-    body = response.json()
-    assert "error" in body
-    error = body["error"]
-    
-    assert "code" in error
-    assert error["code"] == "invalid_input"
-    assert "message" in error
-    assert error["message"] == "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital"
+Note: the router route is "/" mounted at "/patients", so the path is "/patients/".
+"""
+import pytest
 
-    assert "details" in error
-    details = error["details"]
-    assert len(details) == 5
+# v30 canonical error messages (source of truth: API_Reference_v30.md).
+INVALID_INPUT_MESSAGE = (
+    "Malformed body, wrong types, missing required field "
+    "(e.g. no chief complaint), out-of-range vital"
+)
 
-    assert details[0]["field"] == "chief_complaint"
-    assert details[0]["issue"] == "missing required field"
 
-    assert details[1]["field"] == "heart_rate"
-    assert details[1]["issue"] == "must be an integer"
+def test_valid_intake_passes_validation(client, api_examples):
+    """A well-formed contract body clears validation (does NOT hit the 400 path).
 
-    assert details[2]["field"] == "oxygen_saturation"
-    assert "less than or equal to" in details[2]["issue"]
+    Storage/scoring isn't built yet, so we only assert it isn't rejected as
+    malformed. This also guards against the contract body drifting out of sync
+    with the IntakeCreate schema.
+    """
+    body = api_examples["POST /patients"]["valid_201"]["request"]["body"]
+    resp = client.post("/patients/", json=body)
 
-    assert details[3]["field"] == "pain_level"
-    assert "greater than or equal to" in details[3]["issue"]
+    assert resp.status_code != 400
 
-    assert details[4]["field"] == "pre_existing_conditions"
-    assert "invalid selection" in details[4]["issue"]
+
+@pytest.mark.xfail(
+    reason="submitIntake storage + scoring not implemented; endpoint returns a 200 placeholder",
+    strict=False,
+)
+def test_valid_intake_returns_201(client, api_examples):
+    """v30: POST /patients -> 201 Created with new patient_id + severity + queue placement."""
+    body = api_examples["POST /patients"]["valid_201"]["request"]["body"]
+    resp = client.post("/patients/", json=body)
+
+    assert resp.status_code == 201
+    payload = resp.json()
+    assert "patient_id" in payload
+    assert "severity" in payload
+    assert "queue_placement" in payload
+
+
+def test_malformed_intake_returns_400(client, api_examples):
+    """v30: malformed body -> 400 invalid_input with the consistent error envelope."""
+    body = api_examples["POST /patients"]["invalid_400"]["request"]["body"]
+    resp = client.post("/patients/", json=body)
+
+    assert resp.status_code == 400
+    err = resp.json()["error"]
+
+    # Envelope shape + message are pinned by v30.
+    assert err["code"] == "invalid_input"
+    assert err["message"] == INVALID_INPUT_MESSAGE
+    assert "request_id" in err
+
+    # The malformed body has bad heart_rate / oxygen_saturation / pain_level.
+    # Per-field `issue` wording is NOT pinned by v30, and the handler may also
+    # flag the omitted required fields, so assert on a SUBSET of fields.
+    fields = {d["field"] for d in err["details"]}
+    assert {"heart_rate", "oxygen_saturation", "pain_level"} <= fields
+
+
+@pytest.mark.skip(
+    reason="idempotency/dedup not wired up (409 trigger commented out in routers/patients.py)"
+)
+def test_duplicate_intake_returns_409(client, api_examples):
+    """v30: same Idempotency-Key (or identical intake in the dedup window) -> 409 duplicate_request."""
+    key = api_examples["POST /patients"]["conflict_409"]["request"]["headers"]["Idempotency-Key"]
+    body = api_examples["POST /patients"]["valid_201"]["request"]["body"]
+
+    first = client.post("/patients/", json=body, headers={"Idempotency-Key": key})
+    assert first.status_code == 201
+
+    second = client.post("/patients/", json=body, headers={"Idempotency-Key": key})
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "duplicate_request"
+
+
+@pytest.mark.skip(
+    reason="scoreability check not wired up (422 trigger commented out in routers/patients.py)"
+)
+def test_unscoreable_intake_returns_422(client, api_examples):
+    """v30: well-formed but unscoreable body -> 422 unscoreable."""
+    body = api_examples["POST /patients"]["unscoreable_422"]["request"]["body"]
+    resp = client.post("/patients/", json=body)
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "unscoreable"

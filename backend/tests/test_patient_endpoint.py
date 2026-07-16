@@ -15,8 +15,7 @@ import pytest
 
 # v30 canonical error messages (source of truth: API_Reference_v30.md).
 INVALID_INPUT_MESSAGE = (
-    "Malformed body, wrong types, missing required field "
-    "(e.g. no chief complaint), out-of-range vital"
+    "One or more fields are invalid."
 )
 
 

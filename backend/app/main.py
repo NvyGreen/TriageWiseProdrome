@@ -70,7 +70,7 @@ async def patients_validation_handler(request: Request, exc: RequestValidationEr
         content={
             "error": {
                 "code": "invalid_input",
-                "message": "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital",
+                "message": "One or more fields are invalid.",
                 "details": details,
                 "request_id": f"req_{uuid.uuid4().hex[:12]}"
             }
@@ -78,14 +78,14 @@ async def patients_validation_handler(request: Request, exc: RequestValidationEr
     )
 
 @patients_app.exception_handler(HTTPException)
-async def patient_not_found_handler(request: Request, exc: HTTPException):
-    if exc.status_code == 404:
+async def internal_server_error(request: Request, exc: HTTPException):
+    if exc.status_code == 500:
         return JSONResponse(
-            status_code = status.HTTP_404_NOT_FOUND,
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": {
-                    "code": "not_found",
-                    "message": "Unknown patient_id",
+                    "code": "internal_error",
+                    "message": "Something went wrong on our end. Please try again.",
                     "request_id": f"req_{uuid.uuid4().hex[:12]}"
                 }
             }
@@ -99,7 +99,7 @@ async def patient_duplicate_handler(request: Request, exc: patients.DuplicateReq
         content={
             "error": {
                 "code": "duplicate_request",
-                "message": "Idempotency conflict — same intake POSTed twice (same Idempotency-Key, or identical intake within a short window)",
+                "message": "This request was already submitted.",
                 "request_id": f"req_{uuid.uuid4().hex[:12]}"
             }
         }
@@ -112,7 +112,7 @@ async def patient_unscoreable_handler(request: Request, exc: patients.Unscoreabl
         content={
             "error": {
                 "code": "unscoreable",
-                "message": "Body is well-formed but cannot be scored — e.g. no chief complaint mapping, or so much missing data that no rule can fire",
+                "message": "The intake is valid but cannot be scored.",
                 "request_id": f"req_{uuid.uuid4().hex[:12]}"
             }
         }

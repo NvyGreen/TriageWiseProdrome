@@ -1,202 +1,48 @@
-from pydantic import ValidationError
+"""Validation tests for the IntakeCreate schema, driven by a case table.
+
+Cases live in tests/unit_cases/validation_test_cases.json:
+  - "valid" cases must pass validation
+  - "invalid" cases must be rejected, with "expects" naming the field(s) that fail
+
+The table is loaded at module level rather than via a fixture because
+pytest.mark.parametrize needs its data at COLLECTION time, before fixtures exist.
+
+Assertions match on the FIELD that errored, not on the "issue" text: those strings
+are the contract's intended wording, not Pydantic's literal messages (e.g. the file
+says "must be between 0 and 100" where Pydantic says "Input should be less than or
+equal to 100"). Matching fields keeps these tests from breaking on Pydantic wording.
+"""
+import json
+from pathlib import Path
+
 import pytest
-from app.schemas.intake_create import IntakeCreate, ChiefComplaint
+from pydantic import ValidationError
 
-def test_valid_intake_input(intake_body):
-    intake_record = IntakeCreate.model_validate(intake_body)
-    assert intake_record.heart_rate == 120
-    assert intake_record.chief_complaint == ChiefComplaint.CHEST_PAIN
+from app.schemas.intake_create import IntakeCreate
+
+UNIT_CASES = Path(__file__).parent / "unit_cases"
+CASES = json.loads((UNIT_CASES / "validation_test_cases.json").read_text(encoding="utf-8"))
+VALID_CASES = CASES["valid"]
+INVALID_CASES = CASES["invalid"]
 
 
-def test_invalid_column_types(intake_body):
-    intake_body["heart_rate"] = "abc"
+@pytest.mark.parametrize("case", VALID_CASES, ids=lambda c: c["_name"])
+def test_valid_cases(case):
+    """Every "valid" payload must validate cleanly."""
+    IntakeCreate.model_validate(case["payload"])
+
+
+@pytest.mark.parametrize("case", INVALID_CASES, ids=lambda c: c["_name"])
+def test_invalid_cases(case):
+    """Every "invalid" payload must be rejected on the fields named in "expects"."""
     with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "valid integer" in e.exconly()
+        IntakeCreate.model_validate(case["payload"])
 
+    # loc is a tuple like ("pain_level",) or ("pre_existing_conditions", 1);
+    # loc[0] is the field. Guard on empty loc — a model-level error has no field.
+    errored_fields = {err["loc"][0] for err in e.value.errors() if err["loc"]}
 
-def test_invalid_pain_scores(intake_body):
-    intake_body["pain_level"] = -1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "pain_level" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-    
-    intake_body["pain_level"] = 11
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "pain_level" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_invalid_o2sat_scores(intake_body):
-    intake_body["oxygen_saturation"] = -1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "oxygen_saturation" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-    
-    intake_body["oxygen_saturation"] = 101
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "oxygen_saturation" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_valid_chief_complaint(intake_body):
-    del intake_body["chief_complaint"]
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "chief_complaint" in e.exconly()
-    assert "required" in e.exconly()
-    
-
-    intake_body["chief_complaint"] = "fatigue"
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "chief_complaint" in e.exconly()
-    assert "Input should be" in e.exconly()
-
-
-def test_valid_pre_existing_conditions(intake_body):
-    intake_body["pre_existing_conditions"] = ["heart_attack"]
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "pre_existing_conditions" in e.exconly()
-    assert "Input should be" in e.exconly()
-
-    del intake_body["pre_existing_conditions"]
-    intake_record = IntakeCreate.model_validate(intake_body)
-    assert len(intake_record.pre_existing_conditions) == 0
-
-def test_invalid_dob(intake_body):
-    intake_body["date_of_birth"] = "3000-01-01"
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "date_of_birth" in e.exconly()
-    assert "Value error" in e.exconly()
-
-
-def test_invalid_name(intake_body):
-    intake_body["name"] = "a" * 101
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "name" in e.exconly()
-    assert "at most 100 characters" in e.exconly()
-
-
-def test_invalid_heart_rate_scores(intake_body):
-    intake_body["heart_rate"] = -1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "heart_rate" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-
-    intake_body["heart_rate"] = 351
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "heart_rate" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_invalid_systolic_scores(intake_body):
-    intake_body["blood_pressure_systolic"] = -1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "blood_pressure_systolic" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-
-    intake_body["blood_pressure_systolic"] = 301
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "blood_pressure_systolic" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_invalid_diastolic_scores(intake_body):
-    intake_body["blood_pressure_diastolic"] = -1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "blood_pressure_diastolic" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-
-    intake_body["blood_pressure_diastolic"] = 251
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "blood_pressure_diastolic" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_systolic_higher_than_diastolic(intake_body):
-    intake_body["blood_pressure_systolic"] = 90
-    intake_body["blood_pressure_diastolic"] = 120
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "Value error" in e.exconly()
-    assert "Systolic must be higher than diastolic" in e.exconly()
-
-
-    intake_body["blood_pressure_systolic"] = 100
-    intake_body["blood_pressure_diastolic"] = 100
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "Value error" in e.exconly()
-    assert "Systolic must be higher than diastolic" in e.exconly()
-
-
-def test_invalid_temperature_scores(intake_body):
-    intake_body["temperature"] = 67.9
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "temperature" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-
-    intake_body["temperature"] = 115.1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "temperature" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_invalid_respiration_rate_scores(intake_body):
-    intake_body["respiration_rate"] = -1
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "respiration_rate" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-
-    intake_body["respiration_rate"] = 100
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "respiration_rate" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_invalid_blood_sugar_scores(intake_body):
-    intake_body["blood_sugar"] = -1.0
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "blood_sugar" in e.exconly()
-    assert "greater than or equal to" in e.exconly()
-
-
-    intake_body["blood_sugar"] = 1000.0
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "blood_sugar" in e.exconly()
-    assert "less than or equal to" in e.exconly()
-
-
-def test_invalid_source(intake_body):
-    intake_body["source"] = "a" * 11
-    with pytest.raises(ValidationError) as e:
-        IntakeCreate.model_validate(intake_body)
-    assert "source" in e.exconly()
-    assert "at most 10 characters" in e.exconly()
+    # Subset, not equality: stays green if the schema later adds another
+    # required field that these payloads happen to omit.
+    for expected in case["expects"]:
+        assert expected["field"] in errored_fields

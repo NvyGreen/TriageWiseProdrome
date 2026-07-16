@@ -119,7 +119,7 @@ def client():
 
 @pytest.fixture
 def intake_body():
-    data = json.loads((CONTRACTS / "intake_post_body_1_1.json").read_text())
+    data = json.loads((CONTRACTS / "example_intake_request.json").read_text())
     return copy.deepcopy(data)
 
 
@@ -130,5 +130,5 @@ def api_examples():
     Use its request bodies as test inputs; assert responses against
     API_Reference_v30.md (the source of truth), not this file's guessed values.
     """
-    data = json.loads((CONTRACTS / "api_examples.json").read_text())
+    data = json.loads((CONTRACTS / "api_contract_examples.json").read_text())
     return copy.deepcopy(data)

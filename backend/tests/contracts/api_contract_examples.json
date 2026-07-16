@@ -7,13 +7,13 @@
       "Every route calls exactly one TriageService method (see endpoint_method_map).",
       "All errors use the consistent error envelope: { error: { code, message, details?, request_id } }.",
       "POST /patients accepts an Idempotency-Key header; a repeat with the same key returns the original result, a different intake colliding on the dedup window returns 409.",
-      "Fields marked with a sibling key ending in _INFERRED are Claude's plausible guesses where v30 named the view-model but not the exact sub-fields — verify against the real schema and delete the _INFERRED markers once confirmed.",
-      "POST /patients body matches the IntakeCreate Pydantic model: single 'name' field, FLAT vitals (no nested 'vitals' object), no 'notes' field. Client does not send patient_id/intake_id/timestamps."
+      "Fields marked with a sibling key ending in _INFERRED are Claude's plausible guesses where v30 named the view-model but not the exact sub-fields — verify against the real schema and delete the _INFERRED markers once confirmed."
     ],
     "endpoint_method_map": {
       "POST /patients": "submitIntake(data)",
       "GET /queue": "getQueue()",
       "GET /patients/{id}": "getPatientDetail(patientId)",
+      "PATCH /patients/{id}": "updatePatient(patientId, updates)",
       "POST /overrides": "applyOverride(severityId, clinicianESI, reasonCode, note)",
       "GET /metrics": "getMetrics()",
       "GET /reference/complaints": "getComplaintOptions()"
@@ -38,19 +38,17 @@
           "heart_rate": 96,
           "blood_pressure_systolic": 138,
           "blood_pressure_diastolic": 84,
-          "temperature": 98.6,
-          "oxygen_saturation": 97,
           "respiration_rate": 18,
+          "oxygen_saturation": 97,
+          "temperature": 98.6,
           "pain_level": 6,
-          "blood_sugar": null,
           "pregnancy_status": "none",
           "pre_existing_conditions": [
             "hypertension"
           ],
           "arrival_by_ambulance": false,
           "recent_ed_visit_72h": false,
-          "injury_related": false,
-          "source": "form"
+          "injury_related": false
         }
       },
       "response": {
@@ -84,9 +82,6 @@
           "Idempotency-Key": "req_01H9XYZ_bad400"
         },
         "body": {
-          "name": "Test Case",
-          "date_of_birth": "1970-01-01",
-          "sex": "M",
           "chief_complaint": "chest_pain",
           "symptoms": [
             "chest tightness"
@@ -101,7 +96,7 @@
         "body": {
           "error": {
             "code": "invalid_input",
-            "message": "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital",
+            "message": "One or more fields are invalid.",
             "details": [
               {
                 "field": "heart_rate",
@@ -128,7 +123,7 @@
           "Idempotency-Key": "req_01H9XYZ_ab12cd34"
         },
         "body": {
-          "_note": "identical to valid_201 intake, retried with same Idempotency-Key"
+          "note": "identical to valid_201 intake, retried"
         }
       },
       "response": {
@@ -136,7 +131,7 @@
         "body": {
           "error": {
             "code": "duplicate_request",
-            "message": "Idempotency conflict — same intake POSTed twice (same Idempotency-Key, or identical intake within a short window)",
+            "message": "This intake was already submitted.",
             "details": [
               {
                 "field": "Idempotency-Key",
@@ -155,9 +150,6 @@
           "Idempotency-Key": "req_01H9XYZ_unscore"
         },
         "body": {
-          "name": "Minimal Case",
-          "date_of_birth": "1990-05-05",
-          "sex": "unknown",
           "chief_complaint": "other_general",
           "symptoms": []
         }
@@ -167,7 +159,7 @@
         "body": {
           "error": {
             "code": "unscoreable",
-            "message": "Body is well-formed but cannot be scored — e.g. no chief complaint mapping, or so much missing data that no rule can fire",
+            "message": "The intake is valid but cannot be scored: no rule can fire on the provided data.",
             "details": [
               {
                 "field": "vitals",
@@ -321,6 +313,111 @@
       }
     }
   },
+  "PATCH /patients/{id}": {
+    "method": "updatePatient(patientId, updates)",
+    "_note": "Partial update (PATCH). Send only changed fields; others untouched. Recomputes severity + reorders queue (req 1.7).",
+    "valid_200": {
+      "_why": "Clinician updates pain_level (and optionally other vitals); severity + queue position recompute.",
+      "request": {
+        "path": "/patients/4021",
+        "body": {
+          "pain_level": 9,
+          "heart_rate": 104
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "patient_id": 4021,
+          "severity": {
+            "severity_id": 8840,
+            "esi_level": 2,
+            "severity_score": 7,
+            "data_completeness": "high"
+          },
+          "queue_placement": {
+            "position": 2,
+            "reordered": true
+          }
+        }
+      }
+    },
+    "invalid_400": {
+      "_why": "Bad update value (e.g. pain out of range).",
+      "request": {
+        "path": "/patients/4021",
+        "body": {
+          "pain_level": 15
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_input",
+            "message": "Update contains an invalid field.",
+            "details": [
+              {
+                "field": "pain_level",
+                "issue": "must be between 0 and 10"
+              }
+            ],
+            "request_id": "req_01H9XYZ_u400"
+          }
+        }
+      }
+    },
+    "not_found_404": {
+      "_why": "Unknown patient_id — update targets a patient that doesn't exist.",
+      "request": {
+        "path": "/patients/999999",
+        "body": {
+          "pain_level": 5
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No patient with that id.",
+            "details": [
+              {
+                "field": "patient_id",
+                "issue": "999999 does not exist"
+              }
+            ],
+            "request_id": "req_01H9XYZ_u404"
+          }
+        }
+      }
+    },
+    "unscoreable_422": {
+      "_why": "Update leaves the record valid but unscoreable (e.g. clears the only scoreable data).",
+      "request": {
+        "path": "/patients/4021",
+        "body": {
+          "chief_complaint": "other_general"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "unscoreable",
+            "message": "The update leaves the intake unscoreable: no rule can fire.",
+            "details": [
+              {
+                "field": "chief_complaint",
+                "issue": "no scoreable data remains"
+              }
+            ],
+            "request_id": "req_01H9XYZ_u422"
+          }
+        }
+      }
+    }
+  },
   "POST /overrides": {
     "method": "applyOverride(severityId, clinicianESI, reasonCode, note)",
     "valid_201": {
@@ -357,7 +454,7 @@
         "body": {
           "error": {
             "code": "invalid_input",
-            "message": "Malformed body, wrong types, missing required field (e.g. no chief complaint), out-of-range vital",
+            "message": "Override body is invalid.",
             "details": [
               {
                 "field": "clinician_esi",
@@ -410,7 +507,7 @@
         "body": {
           "error": {
             "code": "duplicate_request",
-            "message": "Idempotency conflict — same intake POSTed twice (same Idempotency-Key, or identical intake within a short window)",
+            "message": "This override was already applied.",
             "details": [
               {
                 "field": "severity_id",

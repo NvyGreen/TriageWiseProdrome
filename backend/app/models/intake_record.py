@@ -12,7 +12,7 @@ class IntakeRecord(Base):
     heart_rate = Column(Integer)
     blood_pressure_systolic = Column(Integer)
     blood_pressure_diastolic = Column(Integer)
-    temperature = Column(Numeric(precision=4, scale=1))
+    temperature = Column(Numeric(precision=5, scale=1))
     oxygen_saturation = Column(Integer)
     pain_level = Column(Integer)
     blood_sugar = Column(Numeric(precision=4, scale=1))

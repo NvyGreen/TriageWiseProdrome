@@ -1,0 +1,286 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — intake validation test cases (req 1.22)",
+    "validates": "app/schemas/intake_create.py :: IntakeCreate",
+    "how_to_use": "Each 'valid' case must pass validation. Each 'invalid' case must be rejected; 'expects' lists the field(s) that should fail and why. A validation failure maps to HTTP 400 (invalid_input) with per-field details[]. 'multi_error' proves all errors return, not just the first.",
+    "vital_constraints": {
+      "heart_rate": "gt=0, le=350",
+      "blood_pressure_systolic": "gt=0, le=300",
+      "blood_pressure_diastolic": "gt=0, le=250, must be < systolic",
+      "respiration_rate": "gt=0, le=99",
+      "temperature": "ge=68, le=115 (°F)",
+      "oxygen_saturation": "ge=0, le=100 (definitional)",
+      "pain_level": "ge=0, le=10 (definitional)",
+      "blood_sugar": "gt=0, le=1600.0"
+    },
+    "field_constraints": {
+      "name": "required, max_length=100",
+      "source": "max_length=10, default 'form'",
+      "pre_existing_conditions": "enum list, default empty []"
+    },
+    "notes": [
+      "gt=0 on HR/BP/RR/blood_sugar rejects both negatives AND 0 (a missing vital is null, never 0).",
+      "oxygen_saturation and pain_level use ge (0 is a valid reading for those); negative still rejected.",
+      "temperature floor 68 already excludes negatives.",
+      "systolic > diastolic is a relationship check; equal (systolic == diastolic) is also invalid.",
+      "The 'expects[].issue' strings are the intended messages — align them to your real ValidationError->400 mapping."
+    ]
+  },
+
+  "valid": [
+    {
+      "_name": "full_valid",
+      "payload": {
+        "name": "Jordan Ellis",
+        "date_of_birth": "1958-03-14",
+        "sex": "M",
+        "chief_complaint": "chest_pain",
+        "symptoms": ["chest tightness", "left arm discomfort"],
+        "heart_rate": 96,
+        "blood_pressure_systolic": 138,
+        "blood_pressure_diastolic": 84,
+        "temperature": 98.6,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 6,
+        "blood_sugar": 110.0,
+        "pregnancy_status": "none",
+        "pre_existing_conditions": ["hypertension"],
+        "arrival_by_ambulance": false,
+        "recent_ed_visit_72h": false,
+        "injury_related": false,
+        "source": "form"
+      }
+    },
+    {
+      "_name": "valid_minimal_no_vitals",
+      "_why": "vitals optional, symptoms optional, pre_existing_conditions defaults to [] — only chief_complaint required",
+      "payload": {
+        "name": "Sam Rivera",
+        "date_of_birth": "1990-07-02",
+        "sex": "F",
+        "chief_complaint": "abdominal_pain"
+      }
+    },
+    {
+      "_name": "valid_boundary_caps",
+      "_why": "upper vital ceilings and inclusive ge edges all pass",
+      "payload": {
+        "name": "Pat Doe",
+        "date_of_birth": "1975-01-01",
+        "sex": "other",
+        "chief_complaint": "syncope",
+        "heart_rate": 350,
+        "blood_pressure_systolic": 300,
+        "blood_pressure_diastolic": 250,
+        "respiration_rate": 99,
+        "temperature": 115,
+        "oxygen_saturation": 100,
+        "pain_level": 0,
+        "blood_sugar": 1600.0
+      }
+    },
+    {
+      "_name": "valid_low_temp_boundary",
+      "_why": "temperature floor 68 is inclusive",
+      "payload": {
+        "name": "Cold Case",
+        "date_of_birth": "1980-01-01",
+        "sex": "M",
+        "chief_complaint": "other_general",
+        "temperature": 68
+      }
+    },
+    {
+      "_name": "valid_multiple_conditions",
+      "_why": "pre_existing_conditions accepts multiple valid enum values",
+      "payload": {
+        "name": "Complex Hx",
+        "date_of_birth": "1955-05-05",
+        "sex": "F",
+        "chief_complaint": "chest_pain",
+        "pre_existing_conditions": ["diabetes", "hypertension", "prior_mi"]
+      }
+    }
+  ],
+
+  "invalid": [
+    {
+      "_name": "missing_chief_complaint",
+      "_why": "chief_complaint is the required field",
+      "payload": { "name": "No Complaint", "date_of_birth": "1980-01-01", "sex": "M" },
+      "expects": [{ "field": "chief_complaint", "issue": "field required" }]
+    },
+    {
+      "_name": "bad_chief_complaint_enum",
+      "payload": { "name": "Bad Enum", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "tummy_ache" },
+      "expects": [{ "field": "chief_complaint", "issue": "not a valid enum value" }]
+    },
+    {
+      "_name": "name_too_long",
+      "_why": "name max_length=100",
+      "payload": { "name": "Xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain" },
+      "expects": [{ "field": "name", "issue": "must be at most 100 characters" }]
+    },
+    {
+      "_name": "source_too_long",
+      "_why": "source max_length=10",
+      "payload": { "name": "Long Source", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "source": "verylongsourcevalue" },
+      "expects": [{ "field": "source", "issue": "must be at most 10 characters" }]
+    },
+    {
+      "_name": "bad_pre_existing_condition_enum",
+      "_why": "pre_existing_conditions must be valid enum values",
+      "payload": { "name": "Bad Condition", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "pre_existing_conditions": ["diabetes", "made_up_condition"] },
+      "expects": [{ "field": "pre_existing_conditions", "issue": "not a valid enum value" }]
+    },
+    {
+      "_name": "spo2_over_100",
+      "payload": { "name": "High SpO2", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "shortness_of_breath", "oxygen_saturation": 150 },
+      "expects": [{ "field": "oxygen_saturation", "issue": "must be between 0 and 100" }]
+    },
+    {
+      "_name": "spo2_negative",
+      "payload": { "name": "Neg SpO2", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "shortness_of_breath", "oxygen_saturation": -5 },
+      "expects": [{ "field": "oxygen_saturation", "issue": "must be between 0 and 100" }]
+    },
+    {
+      "_name": "pain_over_10",
+      "payload": { "name": "High Pain", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "severe_headache", "pain_level": 15 },
+      "expects": [{ "field": "pain_level", "issue": "must be between 0 and 10" }]
+    },
+    {
+      "_name": "pain_negative",
+      "_why": "pain_level ge=0 — negative rejected",
+      "payload": { "name": "Neg Pain", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "severe_headache", "pain_level": -3 },
+      "expects": [{ "field": "pain_level", "issue": "must be between 0 and 10" }]
+    },
+    {
+      "_name": "heart_rate_zero",
+      "_why": "gt=0 — 0 rejected (missing vital should be null, not 0)",
+      "payload": { "name": "Zero HR", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "heart_rate": 0 },
+      "expects": [{ "field": "heart_rate", "issue": "must be greater than 0" }]
+    },
+    {
+      "_name": "heart_rate_negative",
+      "payload": { "name": "Neg HR", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "heart_rate": -40 },
+      "expects": [{ "field": "heart_rate", "issue": "must be greater than 0" }]
+    },
+    {
+      "_name": "heart_rate_over_max",
+      "payload": { "name": "Fast HR", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "heart_rate": 400 },
+      "expects": [{ "field": "heart_rate", "issue": "must be between 1 and 350" }]
+    },
+    {
+      "_name": "systolic_zero",
+      "payload": { "name": "Zero SBP", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "syncope", "blood_pressure_systolic": 0 },
+      "expects": [{ "field": "blood_pressure_systolic", "issue": "must be greater than 0" }]
+    },
+    {
+      "_name": "systolic_over_max",
+      "payload": { "name": "High SBP", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "severe_headache", "blood_pressure_systolic": 350 },
+      "expects": [{ "field": "blood_pressure_systolic", "issue": "must be between 1 and 300" }]
+    },
+    {
+      "_name": "diastolic_zero",
+      "_why": "diastolic gt=0",
+      "payload": { "name": "Zero DBP", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "blood_pressure_systolic": 120, "blood_pressure_diastolic": 0 },
+      "expects": [{ "field": "blood_pressure_diastolic", "issue": "must be greater than 0" }]
+    },
+    {
+      "_name": "diastolic_over_max",
+      "_why": "diastolic le=250 (and independently must be < systolic)",
+      "payload": { "name": "High DBP", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "blood_pressure_systolic": 300, "blood_pressure_diastolic": 260 },
+      "expects": [{ "field": "blood_pressure_diastolic", "issue": "must be between 1 and 250" }]
+    },
+    {
+      "_name": "diastolic_exceeds_systolic",
+      "_why": "relationship check — diastolic cannot exceed systolic",
+      "payload": { "name": "Swapped BP", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "blood_pressure_systolic": 80, "blood_pressure_diastolic": 120 },
+      "expects": [{ "field": "blood_pressure_diastolic", "issue": "must be less than systolic" }]
+    },
+    {
+      "_name": "diastolic_equals_systolic",
+      "_why": "boundary — equal is invalid (must be strictly less than systolic)",
+      "payload": { "name": "Equal BP", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "blood_pressure_systolic": 100, "blood_pressure_diastolic": 100 },
+      "expects": [{ "field": "blood_pressure_diastolic", "issue": "must be less than systolic" }]
+    },
+    {
+      "_name": "respiration_rate_zero",
+      "payload": { "name": "Zero RR", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "shortness_of_breath", "respiration_rate": 0 },
+      "expects": [{ "field": "respiration_rate", "issue": "must be greater than 0" }]
+    },
+    {
+      "_name": "respiration_rate_over_max",
+      "_why": "RR le=99",
+      "payload": { "name": "Fast RR", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "shortness_of_breath", "respiration_rate": 120 },
+      "expects": [{ "field": "respiration_rate", "issue": "must be between 1 and 99" }]
+    },
+    {
+      "_name": "temperature_below_floor",
+      "payload": { "name": "Cold Impossible", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "other_general", "temperature": 50 },
+      "expects": [{ "field": "temperature", "issue": "must be between 68 and 115" }]
+    },
+    {
+      "_name": "temperature_above_ceiling",
+      "_why": "temperature le=115",
+      "payload": { "name": "Hot Impossible", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "other_general", "temperature": 120 },
+      "expects": [{ "field": "temperature", "issue": "must be between 68 and 115" }]
+    },
+    {
+      "_name": "blood_sugar_zero",
+      "payload": { "name": "Zero Glucose", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "syncope", "blood_sugar": 0 },
+      "expects": [{ "field": "blood_sugar", "issue": "must be greater than 0" }]
+    },
+    {
+      "_name": "blood_sugar_over_max",
+      "_why": "blood_sugar le=1600.0",
+      "payload": { "name": "High Glucose", "date_of_birth": "1980-01-01", "sex": "F", "chief_complaint": "syncope", "blood_sugar": 2000.0 },
+      "expects": [{ "field": "blood_sugar", "issue": "must be between 0 and 1600" }]
+    },
+    {
+      "_name": "wrong_type_heart_rate",
+      "_why": "type check — heart_rate must be numeric",
+      "payload": { "name": "Bad HR", "date_of_birth": "1980-01-01", "sex": "M", "chief_complaint": "chest_pain", "heart_rate": "ninety" },
+      "expects": [{ "field": "heart_rate", "issue": "must be a valid integer" }]
+    },
+    {
+      "_name": "bad_sex_enum",
+      "payload": { "name": "Bad Sex", "date_of_birth": "1980-01-01", "sex": "male", "chief_complaint": "chest_pain" },
+      "expects": [{ "field": "sex", "issue": "not a valid enum value" }]
+    },
+    {
+      "_name": "bad_date_format",
+      "payload": { "name": "Bad DOB", "date_of_birth": "03/14/1958", "sex": "M", "chief_complaint": "chest_pain" },
+      "expects": [{ "field": "date_of_birth", "issue": "invalid date format" }]
+    },
+    {
+      "_name": "future_dob",
+      "_why": "DOB cannot be in the future (needs a validator on IntakeCreate)",
+      "payload": { "name": "Future Baby", "date_of_birth": "2030-01-01", "sex": "F", "chief_complaint": "other_general" },
+      "expects": [{ "field": "date_of_birth", "issue": "cannot be in the future" }]
+    },
+    {
+      "_name": "multi_error",
+      "_why": "proves all errors return, not just the first",
+      "payload": {
+        "name": "Many Errors",
+        "date_of_birth": "1980-01-01",
+        "sex": "M",
+        "chief_complaint": "tummy_ache",
+        "oxygen_saturation": 150,
+        "pain_level": 15,
+        "heart_rate": 0,
+        "blood_pressure_systolic": 80,
+        "blood_pressure_diastolic": 120
+      },
+      "expects": [
+        { "field": "chief_complaint", "issue": "not a valid enum value" },
+        { "field": "oxygen_saturation", "issue": "must be between 0 and 100" },
+        { "field": "pain_level", "issue": "must be between 0 and 10" },
+        { "field": "heart_rate", "issue": "must be greater than 0" },
+        { "field": "blood_pressure_diastolic", "issue": "must be less than systolic" }
+      ]
+    }
+  ]
+}

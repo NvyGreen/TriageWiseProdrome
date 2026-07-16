@@ -1,0 +1,27 @@
+# Runtime dependencies — what the FastAPI app imports and needs in order to serve.
+#
+# THIS IS THE SOURCE FILE. requirements.txt is a compiled lock (exact versions +
+# hashes) generated from this one. Never edit requirements.txt by hand; editing
+# it breaks the hashes, and the natural "fix" is to delete them.
+#
+# To add or change a dependency:
+#     1. edit this file
+#     2. uv pip compile requirements.in -o requirements.txt \
+#            --generate-hashes --python-version 3.14
+#     3. commit both files together
+#
+# Deliberately absent (each is already provided transitively, and nothing
+# imports it directly):
+#     uvicorn        - fastapi[standard] pulls uvicorn[standard]
+#     python-dotenv  - pydantic-settings pulls it; app/config.py uses the
+#                      pydantic-settings API, never dotenv directly
+# Belongs elsewhere:
+#     pytest         - tests only, see requirements-dev.in
+#     pandas         - scripts/ only, see requirements-scripts.in
+
+fastapi[standard]
+sqlalchemy
+alembic
+pydantic
+pydantic-settings
+psycopg2-binary

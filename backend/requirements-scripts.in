@@ -1,0 +1,13 @@
+# Dependencies for the one-off scripts in scripts/ — NOT needed by the app or CI.
+#
+# Only derive_condition_reference.py imports pandas, and it also needs the raw
+# NHAMCS .dta (gitignored), so it is a manual, local-only job. Keeping pandas out
+# of the runtime and dev locks keeps it off the CI install path entirely.
+#
+# Compile with:
+#     uv pip compile requirements-scripts.in -o requirements-scripts.txt \
+#         --generate-hashes --python-version 3.14
+
+-c requirements.txt
+
+pandas

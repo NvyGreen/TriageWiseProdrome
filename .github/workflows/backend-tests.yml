@@ -57,12 +57,19 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
 
+      # Both files are compiled locks (exact versions + hashes) — see
+      # requirements.in. --require-hashes makes pip reject anything not pinned
+      # in them, so a transitive dependency can never slip in unreviewed.
+      # requirements-scripts.txt is deliberately not installed: only
+      # scripts/derive_condition_reference.py needs pandas, and CI never runs it.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
       - name: Run pytest
         env:

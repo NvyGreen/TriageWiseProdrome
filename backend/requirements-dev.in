@@ -1,0 +1,16 @@
+# Test-only dependencies. Installed in CI alongside requirements.txt.
+#
+# Compile with:
+#     uv pip compile requirements-dev.in -o requirements-dev.txt \
+#         --generate-hashes --python-version 3.14
+#
+# The -c line constrains resolution against the runtime lock, so installing test
+# tooling can never quietly move a runtime package (SQLAlchemy, Pydantic) to a
+# version different from the one production runs.
+#
+# httpx is not listed: TestClient needs it, but fastapi[standard] already
+# provides it via the runtime lock.
+
+-c requirements.txt
+
+pytest

@@ -1,17 +1,35 @@
 name: backend-tests
 
+# Triggers are deliberately unfiltered. Path filtering lives on the `pytest`
+# job instead (via the `changes` job below), because a workflow skipped by an
+# `on:` path filter never reports a status at all — so a required `pytest`
+# check sits at "Expected - Waiting for status to be reported" and blocks the
+# PR forever. A job skipped by `if:` does report, which satisfies the check.
 on:
   push:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-tests.yml"
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-tests.yml"
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Detect backend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/backend-tests.yml"
+
   pytest:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

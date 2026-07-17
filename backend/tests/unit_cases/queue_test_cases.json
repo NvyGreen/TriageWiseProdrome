@@ -1,0 +1,140 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — priority queue test cases (reqs 1.5, 1.6)",
+    "validates": "app/services/queue.py — heap priority queue + reprioritization",
+    "sort_key": "(esi_band, flag_tier, arrival_time, intake_id)",
+    "how_to_use": "Each case: build a fresh queue, run the action, assert queue order == expected_order (list of intake_ids). 'requires' tags which requirement the case needs built to pass. Cases tagged '1.6 Reprioritization' will fail until 1.6 exists.",
+    "rules": [
+      "esi_band: 1 (highest priority) .. 5 (lowest).",
+      "flag_tier: 1 (Tier 1, time-critical) < 2 (Tier 2, occult-risk) < 3 (no flag). Lower = seen first.",
+      "flag_tier orders WITHIN an esi_band only — it never moves a patient across bands.",
+      "arrival_time: earlier seen first (tiebreak after flag_tier).",
+      "intake_id: lower seen first (final guaranteed-unique tiebreak).",
+      "severity_score does NOT break ties within a band — the 4-tuple key does."
+    ]
+  },
+
+  "cases": [
+    {
+      "_name": "esi_band_ordering",
+      "requires": "1.5 Priority Queue (heap)",
+      "setup": [
+        {"intake_id": 1, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 3},
+        {"intake_id": 2, "esi_band": 1, "flag_tier": 3, "arrival_time": "10:01", "severity_score": 9},
+        {"intake_id": 3, "esi_band": 2, "flag_tier": 3, "arrival_time": "10:02", "severity_score": 6}
+      ],
+      "action": "insert_all",
+      "expected_order": [2, 3, 1]
+    },
+    {
+      "_name": "arrival_time_tiebreak",
+      "requires": "1.5 Priority Queue (heap)",
+      "setup": [
+        {"intake_id": 1, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:20", "severity_score": 3},
+        {"intake_id": 2, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:05", "severity_score": 3}
+      ],
+      "action": "insert_all",
+      "expected_order": [2, 1]
+    },
+    {
+      "_name": "intake_id_tiebreak",
+      "requires": "1.5 Priority Queue (heap)",
+      "setup": [
+        {"intake_id": 7, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 3},
+        {"intake_id": 4, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 3}
+      ],
+      "action": "insert_all",
+      "expected_order": [4, 7]
+    },
+    {
+      "_name": "tier1_jumps_within_band",
+      "requires": "1.5 Priority Queue (heap)",
+      "setup": [
+        {"intake_id": 1, "esi_band": 3, "flag_tier": 3, "arrival_time": "09:00", "severity_score": 3},
+        {"intake_id": 2, "esi_band": 3, "flag_tier": 3, "arrival_time": "09:30", "severity_score": 4},
+        {"intake_id": 3, "esi_band": 3, "flag_tier": 1, "arrival_time": "10:00", "severity_score": 5}
+      ],
+      "action": "insert_all",
+      "expected_order": [3, 1, 2]
+    },
+    {
+      "_name": "tier2_over_tier3_beats_arrival",
+      "requires": "1.5 Priority Queue (heap)",
+      "setup": [
+        {"intake_id": 1, "esi_band": 3, "flag_tier": 3, "arrival_time": "09:30", "severity_score": 3},
+        {"intake_id": 2, "esi_band": 3, "flag_tier": 2, "arrival_time": "10:30", "severity_score": 3}
+      ],
+      "action": "insert_all",
+      "expected_order": [2, 1]
+    },
+    {
+      "_name": "tier_stays_within_band",
+      "requires": "1.5 Priority Queue (heap)",
+      "_why": "A Tier-1 ESI-3 must still sit below a no-flag ESI-2 — flag tier never crosses bands.",
+      "setup": [
+        {"intake_id": 1, "esi_band": 3, "flag_tier": 1, "arrival_time": "09:00", "severity_score": 5},
+        {"intake_id": 2, "esi_band": 2, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 6}
+      ],
+      "action": "insert_all",
+      "expected_order": [2, 1]
+    },
+    {
+      "_name": "score_does_not_break_tie",
+      "requires": "1.5 Priority Queue (heap)",
+      "_why": "Same band, same flag, same arrival — higher severity_score does NOT jump; intake_id decides.",
+      "setup": [
+        {"intake_id": 5, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 5},
+        {"intake_id": 8, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 3}
+      ],
+      "action": "insert_all",
+      "expected_order": [5, 8]
+    },
+    {
+      "_name": "new_high_severity_insert_jumps_to_top",
+      "requires": "1.6 Reprioritization",
+      "setup": [
+        {"intake_id": 1, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 3},
+        {"intake_id": 2, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:05", "severity_score": 4}
+      ],
+      "action": {"insert": {"intake_id": 3, "esi_band": 1, "flag_tier": 3, "arrival_time": "10:10", "severity_score": 9}},
+      "expected_order": [3, 1, 2]
+    },
+    {
+      "_name": "new_mid_severity_insert_slots_between",
+      "requires": "1.6 Reprioritization",
+      "setup": [
+        {"intake_id": 1, "esi_band": 1, "flag_tier": 3, "arrival_time": "10:00", "severity_score": 9},
+        {"intake_id": 2, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:05", "severity_score": 3}
+      ],
+      "action": {"insert": {"intake_id": 3, "esi_band": 2, "flag_tier": 3, "arrival_time": "10:10", "severity_score": 6}},
+      "expected_order": [1, 3, 2]
+    },
+    {
+      "_name": "full_sequence_p1_to_p5",
+      "requires": "1.5 Priority Queue (heap)",
+      "_why": "Patients arrive over time; assert order after each arrival. Mirrors the P1-P5 walkthrough.",
+      "sequence": [
+        {
+          "arrives": {"intake_id": 1, "esi_band": 3, "flag_tier": 3, "arrival_time": "09:30", "severity_score": 3},
+          "expected_order": [1]
+        },
+        {
+          "arrives": {"intake_id": 2, "esi_band": 1, "flag_tier": 3, "arrival_time": "10:20", "severity_score": 9},
+          "expected_order": [2, 1]
+        },
+        {
+          "arrives": {"intake_id": 3, "esi_band": 3, "flag_tier": 2, "arrival_time": "10:30", "severity_score": 3},
+          "expected_order": [2, 3, 1]
+        },
+        {
+          "arrives": {"intake_id": 4, "esi_band": 3, "flag_tier": 3, "arrival_time": "10:45", "severity_score": 3},
+          "expected_order": [2, 3, 1, 4]
+        },
+        {
+          "arrives": {"intake_id": 5, "esi_band": 3, "flag_tier": 1, "arrival_time": "11:00", "severity_score": 5},
+          "expected_order": [2, 5, 3, 1, 4]
+        }
+      ]
+    }
+  ]
+}

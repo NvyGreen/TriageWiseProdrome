@@ -92,6 +92,22 @@ async def internal_server_error(request: Request, exc: HTTPException):
         )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
+@patients_app.exception_handler(patients.IdempotencyKeyRequiredException)
+async def idempotency_key_required_handler(request: Request, exc: patients.IdempotencyKeyRequiredException):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": {
+                "code": "invalid_input",
+                "message": "One or more fields are invalid.",
+                "details": [
+                    {"field": "Idempotency-Key", "issue": "missing required header"}
+                ],
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
+
 @patients_app.exception_handler(patients.DuplicateRequestException)
 async def patient_duplicate_handler(request: Request, exc: patients.DuplicateRequestException):
     return JSONResponse(

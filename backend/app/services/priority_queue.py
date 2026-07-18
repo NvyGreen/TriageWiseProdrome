@@ -1,32 +1,37 @@
 from collections import namedtuple
 from datetime import datetime
+import heapq
 
 sortKey = namedtuple("sortKey", ["ESIBand", "flagTier", "arrivalTime", "intakeID"])
 
-class NaiveListQueue:
+class PriorityQueue:
     def __init__(self):
-        self.queue: list[sortKey] = []
+        self.heap: list[sortKey] = []
     
 
-    def insert(self, intake_id: int, esi_band: int, flag_tier: int, arrival_time: str, format: str | None = None) -> None:
+    def insert(self, esi_band: int, flag_tier: int, arrival_time: str, intake_id: int, format: str) -> None:
         if format is None:
             timestamp = datetime.fromisoformat(arrival_time)
         else:
             timestamp = datetime.strptime(arrival_time, format)
         
         row = sortKey(esi_band, flag_tier, timestamp, intake_id)
-        self.queue.append(row)
+        heapq.heappush(self.heap, row)
     
 
-    def popHighest(self):
-        self.queue.sort()
-        return self.queue.pop(0)
+    def updatePatientPosition(self, esi_band, flag_tier):
+        pass
 
-    
+
+    def peek(self):
+        pass
+
+
     def orderedIntakeIds(self) -> list[int]:
-        self.queue.sort()
+        heap_copy = self.heap[:]
         result = []
-        for row in self.queue:
-            result.append(row.intakeID)
-        
+        while len(heap_copy) > 0:
+            intake_id = heapq.heappop(heap_copy).intakeID
+            result.append(intake_id)
+
         return result

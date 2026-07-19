@@ -1,30 +1,37 @@
-from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timezone
 import heapq
+from app.services.queue_key import sortKey
 
-sortKey = namedtuple("sortKey", ["ESIBand", "flagTier", "arrivalTime", "intakeID"])
 
 class PriorityQueue:
     def __init__(self):
         self.heap: list[sortKey] = []
     
 
-    def insert(self, esi_band: int, flag_tier: int, arrival_time: str, intake_id: int, format: str) -> None:
-        if format is None:
-            timestamp = datetime.fromisoformat(arrival_time)
-        else:
-            timestamp = datetime.strptime(arrival_time, format)
+    def insert(self, esi_band: int, flag_tier: int, arrival_time: str, intake_id: int, fmt: str | None = None) -> None:
+        if not isinstance(esi_band, int) or isinstance(esi_band, bool) or esi_band < 1 or esi_band > 5:
+            raise ValueError("ESI band must be an integer in the range 1-5, inclusive")
         
-        row = sortKey(esi_band, flag_tier, timestamp, intake_id)
+        if not isinstance(flag_tier, int) or isinstance(flag_tier, bool) or flag_tier < 1 or flag_tier > 3:
+            raise ValueError("Flag tier must be an integer in the range 1-3, inclusive")
+        
+        timestamp = datetime.fromisoformat(arrival_time) if fmt is None else datetime.strptime(arrival_time, fmt)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        
+        row = sortKey(esi_band, flag_tier, timestamp.timestamp(), intake_id)
         heapq.heappush(self.heap, row)
     
 
-    def updatePatientPosition(self, esi_band, flag_tier):
-        pass
+    def updatePatientPosition(self, intake_id, esi_band, flag_tier):
+        raise NotImplementedError("Updating patient position not implemented yet")
 
 
-    def peek(self):
-        pass
+    def popHighest(self) -> int:
+        if len(self.heap) == 0:
+            raise IndexError("Queue is empty")
+        record = heapq.heappop(self.heap)
+        return record.intakeID
 
 
     def orderedIntakeIds(self) -> list[int]:

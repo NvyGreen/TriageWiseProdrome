@@ -116,6 +116,31 @@
         }
       }
     },
+    "missing_idempotency_key_400": {
+      "_why": "Idempotency-Key header is required on POST; absent → 400.",
+      "request": {
+        "headers": {},
+        "body": {
+          "note": "valid body, but no Idempotency-Key header"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_input",
+            "message": "Idempotency-Key header is required.",
+            "details": [
+              {
+                "field": "Idempotency-Key",
+                "issue": "required header is missing"
+              }
+            ],
+            "request_id": "req_01H9XYZ_nohdr"
+          }
+        }
+      }
+    },
     "conflict_409": {
       "_why": "Same Idempotency-Key (or identical intake within the dedup window) POSTed twice.",
       "request": {
@@ -231,7 +256,7 @@
       }
     }
   },
-  "GET /patients/{id}": {
+  "GET /intakes/{id}": {
     "method": "getPatientDetail(patientId)",
     "query_params": [
       "?mode=xai|blackbox"
@@ -293,7 +318,7 @@
     "not_found_404": {
       "_why": "Unknown patient_id.",
       "request": {
-        "path": "/patients/999999"
+        "path": "/intakes/999999"
       },
       "response": {
         "status": 404,
@@ -313,13 +338,13 @@
       }
     }
   },
-  "PATCH /patients/{id}": {
+  "PATCH /intakes/{id}": {
     "method": "updatePatient(patientId, updates)",
     "_note": "Partial update (PATCH). Send only changed fields; others untouched. Recomputes severity + reorders queue (req 1.7).",
     "valid_200": {
       "_why": "Clinician updates pain_level (and optionally other vitals); severity + queue position recompute.",
       "request": {
-        "path": "/patients/4021",
+        "path": "/intakes/4021",
         "body": {
           "pain_level": 9,
           "heart_rate": 104
@@ -345,7 +370,7 @@
     "invalid_400": {
       "_why": "Bad update value (e.g. pain out of range).",
       "request": {
-        "path": "/patients/4021",
+        "path": "/intakes/4021",
         "body": {
           "pain_level": 15
         }
@@ -370,7 +395,7 @@
     "not_found_404": {
       "_why": "Unknown patient_id — update targets a patient that doesn't exist.",
       "request": {
-        "path": "/patients/999999",
+        "path": "/intakes/999999",
         "body": {
           "pain_level": 5
         }
@@ -395,7 +420,7 @@
     "unscoreable_422": {
       "_why": "Update leaves the record valid but unscoreable (e.g. clears the only scoreable data).",
       "request": {
-        "path": "/patients/4021",
+        "path": "/intakes/4021",
         "body": {
           "chief_complaint": "other_general"
         }
@@ -422,6 +447,9 @@
     "method": "applyOverride(severityId, clinicianESI, reasonCode, note)",
     "valid_201": {
       "request": {
+        "headers": {
+          "Idempotency-Key": "req_01H9OVR_ok01"
+        },
         "body": {
           "severity_id": 8837,
           "clinician_esi": 1,
@@ -444,6 +472,9 @@
     "invalid_400": {
       "_why": "Malformed override body / bad ESI value.",
       "request": {
+        "headers": {
+          "Idempotency-Key": "req_01H9OVR_bad"
+        },
         "body": {
           "severity_id": 8837,
           "clinician_esi": 9
@@ -466,9 +497,37 @@
         }
       }
     },
+    "missing_idempotency_key_400": {
+      "_why": "Idempotency-Key header is required on POST; absent → 400.",
+      "request": {
+        "headers": {},
+        "body": {
+          "note": "valid body, but no Idempotency-Key header"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_input",
+            "message": "Idempotency-Key header is required.",
+            "details": [
+              {
+                "field": "Idempotency-Key",
+                "issue": "required header is missing"
+              }
+            ],
+            "request_id": "req_01H9XYZ_nohdr"
+          }
+        }
+      }
+    },
     "not_found_404": {
       "_why": "Unknown severity_id (override targets a score that doesn't exist).",
       "request": {
+        "headers": {
+          "Idempotency-Key": "req_01H9OVR_nf"
+        },
         "body": {
           "severity_id": 999999,
           "clinician_esi": 2,
@@ -495,6 +554,9 @@
     "conflict_409": {
       "_why": "Idempotency conflict on override retry.",
       "request": {
+        "headers": {
+          "Idempotency-Key": "req_01H9OVR_ok01"
+        },
         "body": {
           "severity_id": 8837,
           "clinician_esi": 1,

@@ -1,13 +1,10 @@
-from datetime import date
 import logging
 from fastapi import APIRouter, Depends, Header, status
 from fastapi.exceptions import HTTPException
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from ..schemas.intake_create import IntakeCreate
 from ..database import get_db
-from ..models.patient import Patient
-from ..models.intake_record import IntakeRecord
 from ..services.idempotency import (
     DuplicateRequestException,
     IdempotencyKeyRequiredException,
@@ -15,13 +12,12 @@ from ..services.idempotency import (
     hash_payload,
     store_idempotency,
 )
+from ..services.triage_service import TriageService
 
 # DuplicateRequestException / IdempotencyKeyRequiredException are defined in the
 # idempotency service and re-exported here so main.py's `patients.X` handler
 # registrations keep resolving.
 __all__ = ["router", "DuplicateRequestException", "IdempotencyKeyRequiredException", "UnscoreableException"]
-
-VITAL_FIELDS = ("heart_rate", "blood_pressure_systolic", "blood_pressure_diastolic", "temperature", "oxygen_saturation", "respiration_rate", "pain_level", "blood_sugar")
 logger = logging.getLogger(__name__)
 
 class UnscoreableException(Exception):
@@ -37,11 +33,10 @@ def test_patients():
 def record_intake(
     record: IntakeCreate,
     db: Session = Depends(get_db),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    # max_length matches idempotency_key's String(64) column, so an overlong key
+    # is a 400 from the validation handler instead of a DataError at commit.
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=64),
 ):
-    # Idempotency boundary check — runs before any domain logic. Raises on a
-    # missing header (400) or a same-key/different-body collision (409); returns
-    # the stored row when this is a safe retry to replay.
     request_hash = hash_payload(record)
     existing = check_idempotency(idempotency_key, request_hash, db)
     if existing is not None:
@@ -49,33 +44,19 @@ def record_intake(
         # handler dict, so returning it re-wraps identically via the default
         # response class (all stored responses are 201 successes).
         return existing.response_body
+    result = TriageService.submitIntake(record, db)
 
+    response_body = {"message": "Intake recorded successfully",
+                        "intake_id": result.intake_id,
+                        "severity_score": result.severity_score,
+                        "queue_placement": result.queue_placement
+                        }
+    store_idempotency(idempotency_key, request_hash, response_body, status.HTTP_201_CREATED, db)
     try:
-        new_patient = Patient(
-            name=record.name,
-            date_of_birth=record.date_of_birth,
-            sex=record.sex
-        )
-        db.add(new_patient)
-        db.flush()
-        patient_id = new_patient.patient_id
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.exception("Patient creation failed")
-        raise HTTPException(status_code=500) from e
-
-    missing_fields = [field for field in VITAL_FIELDS if getattr(record, field) is None]
-    response_body = {"message": "Intake recorded successfully", "patient_id": patient_id}
-    try:
-        new_intake = IntakeRecord(**record.model_dump(exclude={"name", "date_of_birth", "sex"}), patient_id=patient_id, missing_fields=missing_fields)
-        db.add(new_intake)
-        # Store the key -> response mapping in the SAME transaction as the intake,
-        # so a replay can never point at data that failed to commit.
-        store_idempotency(idempotency_key, request_hash, response_body, status.HTTP_201_CREATED, db)
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
-        logger.exception("Intake creation failed")
+        logger.exception("Intake commit failed")
         raise HTTPException(status_code=500) from e
 
     return response_body

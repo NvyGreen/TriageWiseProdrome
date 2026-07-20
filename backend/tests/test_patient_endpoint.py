@@ -45,45 +45,49 @@ def test_intake_saves_patient_and_returns_201(client, api_examples):
     resp = client.post("/patients/", json=body, headers={"Idempotency-Key": _unique_key()})
 
     assert resp.status_code == 201
-    patient_id = resp.json()["payload"]["patient_id"]
-    assert isinstance(patient_id, int)
+    intake_id = resp.json()["payload"]["intake_id"]
+    assert isinstance(intake_id, int)
 
     # Confirm it actually landed in the DB — not just echoed in the response.
+    # The response only carries intake_id, so reach the patient via its FK.
     from app.database import SessionLocal
     from app.models.patient import Patient
     from app.models.intake_record import IntakeRecord
 
     session = SessionLocal()
     try:
-        saved_patient = session.get(Patient, patient_id)
-        assert saved_patient is not None
-        assert saved_patient.name == body["name"]
-
-        saved_intake = (
-            session.query(IntakeRecord)
-            .filter(IntakeRecord.patient_id == patient_id)
-            .first()
-        )
+        saved_intake = session.get(IntakeRecord, intake_id)
         assert saved_intake is not None
         assert saved_intake.chief_complaint == body["chief_complaint"]
+
+        saved_patient = session.get(Patient, saved_intake.patient_id)
+        assert saved_patient is not None
+        assert saved_patient.name == body["name"]
     finally:
         session.close()
 
 
 @pytest.mark.xfail(
-    reason="submitIntake scoring/queue not implemented; response has no severity/queue_placement yet",
+    reason="severity scoring + queue placement not implemented; Result returns None placeholders",
     strict=False,
 )
 def test_valid_intake_returns_201(client, api_examples):
-    """v30: POST /patients -> 201 Created with new patient_id + severity + queue placement."""
+    """v30: POST /patients -> 201 Created with the full Result (id + severity + queue placement).
+
+    NOTE: v30 names the id `patient_id`, but the implementation returns
+    `intake_id`. Reconcile before treating this as the contract test.
+    """
     body = api_examples["POST /patients"]["valid_201"]["request"]["body"]
     resp = client.post("/patients/", json=body, headers={"Idempotency-Key": _unique_key()})
 
     assert resp.status_code == 201
-    payload = resp.json()
-    assert "patient_id" in payload
-    assert "severity" in payload
-    assert "queue_placement" in payload
+    payload = resp.json()["payload"]
+    assert "intake_id" in payload
+
+    # Both are None placeholders today (see utils/result.py); this flips to XPASS
+    # once TriageService actually scores and queues the intake.
+    assert payload["severity_score"] is not None
+    assert payload["queue_placement"] is not None
 
 
 def test_malformed_intake_returns_400(client, api_examples):
@@ -129,24 +133,27 @@ def test_same_key_same_body_replays(client, api_examples):
 
     first = client.post("/patients/", json=body, headers={"Idempotency-Key": key})
     assert first.status_code == 201
-    first_id = first.json()["payload"]["patient_id"]
+    first_id = first.json()["payload"]["intake_id"]
 
     second = client.post("/patients/", json=body, headers={"Idempotency-Key": key})
     assert second.status_code == 201
-    # The original response is replayed verbatim — same patient_id, no new record.
-    assert second.json()["payload"]["patient_id"] == first_id
+    # The original response is replayed verbatim — same intake_id, no new record.
+    assert second.json()["payload"]["intake_id"] == first_id
 
     from app.database import SessionLocal
     from app.models.intake_record import IntakeRecord
 
     session = SessionLocal()
     try:
+        # Replay must not re-process: the patient behind that intake still has
+        # exactly one intake row.
+        patient_id = session.get(IntakeRecord, first_id).patient_id
         count = (
             session.query(IntakeRecord)
-            .filter(IntakeRecord.patient_id == first_id)
+            .filter(IntakeRecord.patient_id == patient_id)
             .count()
         )
-        assert count == 1  # replay did not create a second intake
+        assert count == 1
     finally:
         session.close()
 
@@ -185,7 +192,7 @@ def test_expired_key_reprocesses(client, api_examples):
 
     first = client.post("/patients/", json=body, headers={"Idempotency-Key": key})
     assert first.status_code == 201
-    first_id = first.json()["payload"]["patient_id"]
+    first_id = first.json()["payload"]["intake_id"]
 
     # Age the stored key past the TTL window.
     session = SessionLocal()
@@ -201,7 +208,7 @@ def test_expired_key_reprocesses(client, api_examples):
     different["name"] = "After Expiry"
     second = client.post("/patients/", json=different, headers={"Idempotency-Key": key})
     assert second.status_code == 201
-    assert second.json()["payload"]["patient_id"] != first_id
+    assert second.json()["payload"]["intake_id"] != first_id
 
 
 @pytest.mark.skip(

@@ -13,10 +13,14 @@ column, by design). A key older than IDEMPOTENCY_TTL is treated as absent, and
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+import logging
+
+from fastapi.exceptions import HTTPException
 
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.idempotency_key import IdempotencyKey
 from app.schemas.intake_create import IntakeCreate
@@ -24,6 +28,7 @@ from app.schemas.intake_create import IntakeCreate
 # How long a stored key stays authoritative. Retries within this window replay;
 # after it, the key is fresh again.
 IDEMPOTENCY_TTL = timedelta(hours=24)
+logger = logging.getLogger(__name__)
 
 
 class DuplicateRequestException(Exception):
@@ -86,22 +91,28 @@ def store_idempotency(
     instead of colliding on the primary key; created_at resets, restarting the
     window. Does not commit — the caller commits alongside the domain writes.
     """
-    stmt = (
-        pg_insert(IdempotencyKey)
-        .values(
-            idempotency_key=key,
-            request_hash=request_hash,
-            response_body=response_body,
-            status_code=status_code,
+
+    try:
+        stmt = (
+            pg_insert(IdempotencyKey)
+            .values(
+                idempotency_key=key,
+                request_hash=request_hash,
+                response_body=response_body,
+                status_code=status_code,
+            )
+            .on_conflict_do_update(
+                index_elements=[IdempotencyKey.idempotency_key],
+                set_={
+                    "request_hash": request_hash,
+                    "response_body": response_body,
+                    "status_code": status_code,
+                    "created_at": func.now(),
+                },
+            )
         )
-        .on_conflict_do_update(
-            index_elements=[IdempotencyKey.idempotency_key],
-            set_={
-                "request_hash": request_hash,
-                "response_body": response_body,
-                "status_code": status_code,
-                "created_at": func.now(),
-            },
-        )
-    )
-    db.execute(stmt)
+        db.execute(stmt)
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.exception("Idempotency storage failed")
+        raise HTTPException(status_code=500) from e

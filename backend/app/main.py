@@ -8,7 +8,8 @@ from .config import get_settings, Settings
 from .dependencies import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
-from .routers import patients, queue
+from .routers import patients, queue, intakes
+from .services.triage_service import IntakeNotFoundError
 
 
 class MedicalDisclaimerResponse(JSONResponse):
@@ -28,9 +29,10 @@ class MedicalDisclaimerResponse(JSONResponse):
 app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 patients_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 queue_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+intakes_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 
-@patients_app.exception_handler(RequestValidationError)
-async def patients_validation_handler(request: Request, exc: RequestValidationError):
+
+async def validation_handler(request: Request, exc: RequestValidationError):
     details = []
     for error in exc.errors():
         loc = error.get("loc", ())
@@ -137,8 +139,25 @@ async def patient_unscoreable_handler(request: Request, exc: patients.Unscoreabl
         }
     )
 
-for sub_app in (patients_app, queue_app):
+@intakes_app.exception_handler(IntakeNotFoundError)
+async def intakes_not_found_handler(request: Request, exc: IntakeNotFoundError):
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "error": {
+                "code": "not_found",
+                "message": "No intake with that id.",
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
+
+
+for sub_app in (patients_app, queue_app, intakes_app):
     sub_app.add_exception_handler(HTTPException, internal_server_error)
+
+for sub_app in (patients_app, intakes_app):
+    sub_app.add_exception_handler(RequestValidationError, validation_handler)
 
 
 patients_app.include_router(patients.router)
@@ -146,6 +165,9 @@ app.mount("/patients", patients_app)
 
 queue_app.include_router(queue.router)
 app.mount("/queue", queue_app)
+
+intakes_app.include_router(intakes.router)
+app.mount("/intakes", intakes_app)
 
 
 @app.get("/")

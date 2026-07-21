@@ -20,6 +20,19 @@ class NaiveListQueue:
         raise NotImplementedError("Updating patient position not implemented yet")
     
 
+    def remove(self, intake_id):
+        remove_index = -1
+        for i in range(len(self.heap)):
+            if self.heap[i].intakeID == intake_id:
+                remove_index = i
+                break
+        
+        if remove_index == -1:
+            raise ValueError(f"{intake_id} not in queue")
+        
+        self.queue.pop(remove_index)
+    
+
     def popHighest(self) -> int:
         if len(self.queue) == 0:
             raise IndexError("Queue is empty")

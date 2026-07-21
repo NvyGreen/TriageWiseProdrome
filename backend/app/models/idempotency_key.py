@@ -1,6 +1,6 @@
 from sqlalchemy import Column, DateTime, func, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
-from app.database import Base
+from app.dependencies import Base
 
 class IdempotencyKey(Base):
     __tablename__ = "idempotency_key"

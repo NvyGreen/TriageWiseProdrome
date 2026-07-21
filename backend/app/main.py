@@ -5,10 +5,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .config import get_settings, Settings
-from .database import get_db
+from .dependencies import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
-from .routers import patients
+from .routers import patients, queue
 
 
 class MedicalDisclaimerResponse(JSONResponse):
@@ -24,8 +24,10 @@ class MedicalDisclaimerResponse(JSONResponse):
         }
         return super().render(wrapped_content)
 
+
 app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 patients_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+queue_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 
 @patients_app.exception_handler(RequestValidationError)
 async def patients_validation_handler(request: Request, exc: RequestValidationError):
@@ -77,7 +79,8 @@ async def patients_validation_handler(request: Request, exc: RequestValidationEr
         }
     )
 
-@patients_app.exception_handler(HTTPException)
+# Registered on both sub-apps at the bottom of this module, so the 500 envelope
+# stays identical across them.
 async def internal_server_error(request: Request, exc: HTTPException):
     if exc.status_code == 500:
         return JSONResponse(
@@ -134,8 +137,16 @@ async def patient_unscoreable_handler(request: Request, exc: patients.Unscoreabl
         }
     )
 
+for sub_app in (patients_app, queue_app):
+    sub_app.add_exception_handler(HTTPException, internal_server_error)
+
+
 patients_app.include_router(patients.router)
 app.mount("/patients", patients_app)
+
+queue_app.include_router(queue.router)
+app.mount("/queue", queue_app)
+
 
 @app.get("/")
 def root(settings: Settings = Depends(get_settings)):

@@ -50,7 +50,7 @@ def test_intake_saves_patient_and_returns_201(client, api_examples):
 
     # Confirm it actually landed in the DB — not just echoed in the response.
     # The response only carries intake_id, so reach the patient via its FK.
-    from app.database import SessionLocal
+    from app.dependencies import SessionLocal
     from app.models.patient import Patient
     from app.models.intake_record import IntakeRecord
 
@@ -140,7 +140,7 @@ def test_same_key_same_body_replays(client, api_examples):
     # The original response is replayed verbatim — same intake_id, no new record.
     assert second.json()["payload"]["intake_id"] == first_id
 
-    from app.database import SessionLocal
+    from app.dependencies import SessionLocal
     from app.models.intake_record import IntakeRecord
 
     session = SessionLocal()
@@ -183,7 +183,7 @@ def test_expired_key_reprocesses(client, api_examples):
     """
     from datetime import timedelta
 
-    from app.database import SessionLocal
+    from app.dependencies import SessionLocal
     from app.models.idempotency_key import IdempotencyKey
     from app.services.idempotency import IDEMPOTENCY_TTL
 

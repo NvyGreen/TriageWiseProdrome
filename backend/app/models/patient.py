@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Date, DateTime, func
-from app.database import Base
+from app.dependencies import Base
 
 
 class Patient(Base):

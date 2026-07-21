@@ -4,7 +4,7 @@ from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from ..schemas.intake_create import IntakeCreate
-from ..database import get_db
+from ..dependencies import get_db
 from ..services.idempotency import (
     DuplicateRequestException,
     IdempotencyKeyRequiredException,

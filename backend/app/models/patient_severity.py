@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, CheckConstraint, Column, Integer, ForeignKey, func, Numeric, String, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from app.database import Base
+from app.dependencies import Base
 
 class PatientSeverity(Base):
     __tablename__ = "patient_severity"

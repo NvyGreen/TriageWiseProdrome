@@ -25,6 +25,35 @@ class PriorityQueue:
 
     def updatePatientPosition(self, intake_id, esi_band, flag_tier):
         raise NotImplementedError("Updating patient position not implemented yet")
+    
+
+    def remove(self, intake_id):
+        remove_index = -1
+        for i in range(len(self.heap)):
+            if self.heap[i].intakeID == intake_id:
+                remove_index = i
+                break
+        
+        if remove_index == -1:
+            raise ValueError(f"{intake_id} not in queue")
+
+        last_index = len(self.heap) - 1
+        if remove_index == 0:
+            record = heapq.heappop(self.heap)
+            return record.intakeID
+        elif remove_index == last_index:
+            record = self.heap.pop()
+            return record.intakeID
+
+        moved_element = self.heap[last_index]
+        self.heap[remove_index] = moved_element
+        self.heap.pop()
+
+        parent_index = (remove_index - 1) // 2
+        if remove_index > 0 and self.heap[remove_index] < self.heap[parent_index]:
+            self._sift_up(remove_index)
+        else:
+            self._sift_down(remove_index)
 
 
     def popHighest(self) -> int:
@@ -42,3 +71,30 @@ class PriorityQueue:
             result.append(intake_id)
 
         return result
+    
+
+    def _sift_up(self, i):
+        while i > 0:
+            parent = (i - 1) // 2
+            if self.heap[i] < self.heap[parent]:
+                self.heap[i], self.heap[parent] = self.heap[parent], self.heap[i]
+                i = parent
+            else:
+                break
+    
+
+    def _sift_down(self, i):
+        length = len(self.heap)
+        while 2 * i + 1 < length:
+            left = 2 * i + 1
+            right = 2 * i + 2
+            smallest = left
+
+            if right < length and self.heap[right] < self.heap[left]:
+                smallest = right
+            
+            if self.heap[i] > self.heap[smallest]:
+                self.heap[i], self.heap[smallest] = self.heap[smallest], self.heap[i]
+                i = smallest
+            else:
+                break

@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Column, CheckConstraint, Integer, String, DateTime, ForeignKey, func, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
-from app.database import Base
+from app.dependencies import Base
 
 class IntakeRecord(Base):
     __tablename__ = "intake_record"

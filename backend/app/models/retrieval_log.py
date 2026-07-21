@@ -1,5 +1,5 @@
 from sqlalchemy import Column, DateTime, ForeignKey, func, Integer, Numeric
-from app.database import Base
+from app.dependencies import Base
 
 class RetrievalLog(Base):
     __tablename__ = "retrieval_log"

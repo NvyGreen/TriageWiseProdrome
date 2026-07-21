@@ -1,5 +1,5 @@
 from sqlalchemy import Boolean, Column, Integer, String
-from app.database import Base
+from app.dependencies import Base
 
 class RedFlagRule(Base):
     __tablename__ = "red_flag_rule"

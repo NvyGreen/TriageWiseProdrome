@@ -23,8 +23,27 @@ class PriorityQueue:
         heapq.heappush(self.heap, row)
     
 
-    def updatePatientPosition(self, intake_id, esi_band, flag_tier):
-        raise NotImplementedError("Updating patient position not implemented yet")
+    def updatePatientPosition(self, intake_id, esi_band: int, flag_tier: int):
+        update_index = -1
+        for i in range(len(self.heap)):
+            if self.heap[i].intakeID == intake_id:
+                update_index = i
+                break
+        
+        if update_index == -1:
+            raise ValueError(f"{intake_id} not in queue")
+        
+        if update_index == 0:
+            heapq.heapreplace(self.heap, sortKey(esi_band, flag_tier, self.heap[i].arrivalEpoch, intake_id))
+        
+        self.heap[update_index].ESIBand = esi_band
+        self.heap[update_index].flagTier = flag_tier
+
+        parent_index = (update_index - 1) // 2
+        if update_index > 0 and self.heap[update_index] < self.heap[parent_index]:
+            self._sift_up(update_index)
+        else:
+            self._sift_down(update_index)
     
 
     def remove(self, intake_id):

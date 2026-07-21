@@ -17,7 +17,17 @@ class NaiveListQueue:
     
 
     def updatePatientPosition(self, intake_id, esi_band, flag_tier):
-        raise NotImplementedError("Updating patient position not implemented yet")
+        update_index = -1
+        for i in range(len(self.heap)):
+            if self.queue[i].intakeID == intake_id:
+                update_index = i
+                break
+        
+        if update_index == -1:
+            raise ValueError(f"{intake_id} not in queue")
+        
+        self.queue[update_index].ESIBand = esi_band
+        self.queue[update_index].flagTier = flag_tier
     
 
     def remove(self, intake_id):

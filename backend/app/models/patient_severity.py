@@ -14,8 +14,10 @@ class PatientSeverity(Base):
     fallback_used = Column(Boolean, nullable=False, server_default="false")
     red_flags = Column(JSONB, server_default="{}")
     red_flag_fired = Column(Boolean, nullable=False, server_default="false")
+    flag_tier = Column(Integer, nullable=False, server_default="3")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         CheckConstraint("severity_score >= 0 and severity_score <= 100", name="check_severity_score"),
+        CheckConstraint("flag_tier >= 1 and flag_tier <= 3", name="check_flag_tier")
     )

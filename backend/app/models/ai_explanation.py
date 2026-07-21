@@ -1,6 +1,6 @@
 from sqlalchemy import Column, DateTime, ForeignKey, func, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
-from app.database import Base
+from app.dependencies import Base
 
 class AIExplanation(Base):
     __tablename__ = "ai_explanation"

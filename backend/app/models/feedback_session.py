@@ -1,5 +1,5 @@
 from sqlalchemy import Column, DateTime, func, Integer, String
-from app.database import Base
+from app.dependencies import Base
 
 class FeedbackSession(Base):
     __tablename__ = "feedback_session"

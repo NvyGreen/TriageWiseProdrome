@@ -14,8 +14,8 @@ The session-scoped fixture below:
   3. runs ``alembic upgrade head`` to build the schema,
   4. loads the reference tables from the committed CSVs.
 
-NOTE: ``app.database`` builds its engine at import time from the settings, so
-nothing from ``app.database`` / ``app.main`` may be imported until AFTER the
+NOTE: ``app.dependencies`` builds its engine at import time from the settings, so
+nothing from ``app.dependencies`` / ``app.main`` may be imported until AFTER the
 fixture has repointed ``DB_NAME``. That's why those imports are done lazily
 inside the fixtures rather than at module top.
 """
@@ -37,6 +37,19 @@ CONTRACTS = Path(__file__).parent / "contracts"
 def _test_db_name(base_name: str) -> str:
     """Derive the test database name, avoiding a doubled suffix."""
     return base_name if base_name.endswith("_test") else f"{base_name}_test"
+
+
+# Repoint at the test database HERE, at conftest import time — NOT inside the
+# fixture below. pytest imports conftest before it collects test modules, and a
+# test module that imports app.models/app.dependencies at module level builds
+# the engine right then, at collection, before any fixture has run. Repointing
+# in a fixture is too late in that case and the engine binds to the REAL
+# database. Doing it at module scope makes the ordering guaranteed instead of
+# depending on every test file remembering to import lazily.
+# create_engine() doesn't connect eagerly, so naming a database that _database
+# hasn't created yet is fine.
+os.environ["DB_NAME"] = _test_db_name(get_settings().DB_NAME)
+get_settings.cache_clear()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -108,7 +121,7 @@ def _database():
 @pytest.fixture
 def client():
     """A FastAPI TestClient bound to the test database."""
-    # Imported lazily so app.database's engine is built only after _database
+    # Imported lazily so app.dependencies's engine is built only after _database
     # has repointed DB_NAME (see module docstring).
     from app.main import app
 
@@ -116,6 +129,20 @@ def client():
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def db_session():
+    """A DB session bound to the test database, for service-level tests."""
+    # Imported lazily for the same reason as `client` (see module docstring).
+    from app.dependencies import SessionLocal
+
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
 
 @pytest.fixture
 def intake_body():

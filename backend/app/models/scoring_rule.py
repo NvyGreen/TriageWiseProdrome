@@ -1,5 +1,5 @@
 from sqlalchemy import Boolean, Column, Integer, String
-from app.database import Base
+from app.dependencies import Base
 
 class ScoringRule(Base):
     __tablename__ = "scoring_rule"

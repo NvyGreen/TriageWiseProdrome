@@ -41,7 +41,7 @@ from pathlib import Path
 # Expects a SQLAlchemy engine/session and the ORM models from the app package.
 # Adjust these imports to match your project layout.
 try:
-    from app.database import engine, SessionLocal            # type: ignore
+    from app.dependencies import engine, SessionLocal            # type: ignore
     from app.models import (                                 # type: ignore
         ScoringRule,
         RedFlagRule,
@@ -54,7 +54,7 @@ except Exception as exc:  # pragma: no cover - import guard for standalone use
     SessionLocal = None
     print(
         "WARNING: could not import app DB models "
-        f"({exc}). Wire app.database / app.models to your project, "
+        f"({exc}). Wire app.dependencies / app.models to your project, "
         "or run with --dry-run to validate the CSVs only.",
         file=sys.stderr,
     )
@@ -142,7 +142,7 @@ def main() -> None:
 
     if SessionLocal is None:
         sys.exit(
-            "ERROR: DB not wired. Fix app.database/app.models imports, "
+            "ERROR: DB not wired. Fix app.dependencies/app.models imports, "
             "or use --dry-run."
         )
 

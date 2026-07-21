@@ -1,6 +1,6 @@
 from sqlalchemy import Column, DateTime, ForeignKey, func, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
-from app.database import Base
+from app.dependencies import Base
 
 class EventLog(Base):
     __tablename__ = "event_log"

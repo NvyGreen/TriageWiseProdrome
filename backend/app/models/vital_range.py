@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, Numeric, String
-from app.database import Base
+from app.dependencies import Base
 
 class VitalRange(Base):
     __tablename__ = "vital_range"

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String
-from app.database import Base
+from app.dependencies import Base
 
 class ESIBand(Base):
     __tablename__ = "esi_band"

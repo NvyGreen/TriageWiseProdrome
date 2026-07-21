@@ -1,5 +1,5 @@
 from sqlalchemy import Column, DateTime, func, Integer, Numeric, String
-from app.database import Base
+from app.dependencies import Base
 
 class SystemMetric(Base):
     __tablename__ = "system_metric"

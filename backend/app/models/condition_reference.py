@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Numeric
-from app.database import Base
+from app.dependencies import Base
 
 class ConditionReference(Base):
     __tablename__ = "condition_reference"

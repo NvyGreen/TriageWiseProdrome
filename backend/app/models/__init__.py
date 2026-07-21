@@ -18,5 +18,5 @@ from app.models.retrieval_log import RetrievalLog
 from app.models.feedback_session import FeedbackSession
 from app.models.feedback_response import FeedbackResponse
 
-from app.database import Base
+from app.dependencies import Base
 metadata = Base.metadata

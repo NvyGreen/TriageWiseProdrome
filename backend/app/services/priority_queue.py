@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 import heapq
-from app.services.queue_key import sortKey
+from app.services.queue_key import SortKey
 
 
 class PriorityQueue:
     def __init__(self):
-        self.heap: list[sortKey] = []
+        self.heap: list[SortKey] = []
     
 
     def insert(self, esi_band: int, flag_tier: int, arrival_time: str, intake_id: int, fmt: str | None = None) -> None:
@@ -19,18 +19,37 @@ class PriorityQueue:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         
-        row = sortKey(esi_band, flag_tier, timestamp.timestamp(), intake_id)
+        row = SortKey(esi_band, flag_tier, timestamp.timestamp(), intake_id)
         heapq.heappush(self.heap, row)
     
 
-    def updatePatientPosition(self, intake_id, esi_band, flag_tier):
-        raise NotImplementedError("Updating patient position not implemented yet")
+    def updatePatientPosition(self, intake_id: int, esi_band: int, flag_tier: int):
+        update_index = -1
+        for i in range(len(self.heap)):
+            if self.heap[i].intake_id == intake_id:
+                update_index = i
+                break
+        
+        if update_index == -1:
+            raise ValueError(f"{intake_id} not in queue")
+        
+        if update_index == 0:
+            heapq.heapreplace(self.heap, SortKey(esi_band, flag_tier, self.heap[i].arrival_epoch, intake_id))
+        
+        self.heap[update_index].esi_band = esi_band
+        self.heap[update_index].flag_tier = flag_tier
+
+        parent_index = (update_index - 1) // 2
+        if update_index > 0 and self.heap[update_index] < self.heap[parent_index]:
+            self._sift_up(update_index)
+        else:
+            self._sift_down(update_index)
     
 
     def remove(self, intake_id):
         remove_index = -1
         for i in range(len(self.heap)):
-            if self.heap[i].intakeID == intake_id:
+            if self.heap[i].intake_id == intake_id:
                 remove_index = i
                 break
         
@@ -40,10 +59,10 @@ class PriorityQueue:
         last_index = len(self.heap) - 1
         if remove_index == 0:
             record = heapq.heappop(self.heap)
-            return record.intakeID
+            return record.intake_id
         elif remove_index == last_index:
             record = self.heap.pop()
-            return record.intakeID
+            return record.intake_id
 
         moved_element = self.heap[last_index]
         self.heap[remove_index] = moved_element
@@ -60,14 +79,14 @@ class PriorityQueue:
         if len(self.heap) == 0:
             raise IndexError("Queue is empty")
         record = heapq.heappop(self.heap)
-        return record.intakeID
+        return record.intake_id
 
 
     def orderedIntakeIds(self) -> list[int]:
         heap_copy = self.heap[:]
         result = []
         while len(heap_copy) > 0:
-            intake_id = heapq.heappop(heap_copy).intakeID
+            intake_id = heapq.heappop(heap_copy).intake_id
             result.append(intake_id)
 
         return result

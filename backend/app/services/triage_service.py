@@ -1,21 +1,48 @@
 import logging
+from enum import StrEnum
+from decimal import Decimal
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from fastapi.exceptions import HTTPException
+from fastapi.exceptions import HTTPException, RequestValidationError
+
 from ..models.patient import Patient
 from ..models.intake_record import IntakeRecord
 from ..models.patient_severity import PatientSeverity
 from ..models.esi_band import ESIBand
+from ..models.event_log import EventLog
+from ..models.case_update import CaseUpdate
+
 from ..schemas.intake_create import IntakeCreate
+from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
+
 from ..services.priority_queue import PriorityQueue
+
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
 from ..utils.dates import age_from_dob
 
 
-VITAL_FIELDS = ("heart_rate", "blood_pressure_systolic", "blood_pressure_diastolic", "temperature", "oxygen_saturation", "respiration_rate", "pain_level", "blood_sugar")
 logger = logging.getLogger(__name__)
+
+
+class EventType(StrEnum):
+    INTAKE_CREATED = "intake_created"
+    SCORE_CALCULATED = "score_calculated"
+    RED_FLAG_FIRED = "red_flag_fired"
+    QUEUED = "queued"
+    REPRIORITIZED = "reprioritized"
+    OVERRIDE_APPLIED = "override_applied"
+    CASE_UPDATED = "case_updated"
+    STATUS_CHANGED = "status_changed"
+    EXPLANATION_VIEWED = "explanation_viewed"
+
+
+class IntakeNotFoundError(Exception):
+    def __init__(self, intake_id: int):
+        self.intake_id = intake_id
+
 
 class TriageService:
     @staticmethod
@@ -40,6 +67,10 @@ class TriageService:
             db.add(new_intake)
             db.flush()
             # TODO: score severity and place record in queue
+
+            new_event = EventLog(event_type=EventType.INTAKE_CREATED, patient_id=patient_id, intake_id=new_intake.intake_id)
+            db.add(new_event)
+            db.flush()
             return Result(new_intake.intake_id)
         except SQLAlchemyError as e:
             db.rollback()
@@ -89,3 +120,82 @@ class TriageService:
             entries.append(entry)
 
         return entries
+    
+
+    @staticmethod
+    def updatePatient(intake_id: int, updates: IntakeUpdate, queue: PriorityQueue, db: Session) -> Result:
+        try:
+            intake = db.get(IntakeRecord, intake_id)
+        except SQLAlchemyError as e:
+            logger.exception("Intake retrieval failed")
+            raise HTTPException(status_code=500) from e
+        
+        if intake is None:
+            logger.error("No intake with this id")
+            raise IntakeNotFoundError(intake_id=intake_id)
+        patient_id = intake.patient_id
+        
+        if updates.status is not None:            
+            # TODO: Persist status change in triage_queue table            
+            if updates.status == Status.DISPOSITIONED:
+                try:
+                    queue.remove(intake_id)
+                except ValueError:
+                    # TODO: Once triage_queue is implemented, may make this error out instead of a no-op
+                    # logger.exception("No intake with this id")
+                    # raise HTTPException(status_code=404)
+                    pass
+            
+            try:
+                new_event = EventLog(event_type=EventType.STATUS_CHANGED, patient_id=patient_id, intake_id=intake_id)
+                db.add(new_event)
+                db.flush()
+                return Result(intake_id)
+            except SQLAlchemyError as e:
+                db.rollback()
+                logger.exception("Event logging failed")
+                raise HTTPException(status_code=500) from e
+        
+
+        try:
+            dia = updates.blood_pressure_diastolic if updates.blood_pressure_diastolic is not None else intake.blood_pressure_diastolic
+            syst = updates.blood_pressure_systolic if updates.blood_pressure_systolic is not None else intake.blood_pressure_systolic
+            if dia is not None and syst is not None and dia >= syst:
+                logger.error("Diastolic must be lower than systolic")
+                raise RequestValidationError(
+                    errors=[
+                        {
+                            "loc": ("body", "blood_pressure_diastolic"),
+                            "msg": "Value error, Diastolic must be lower than systolic",
+                            "type": "value_error",
+                        }
+                    ]
+                )
+            
+            updated_vitals = {}
+            for field in VITAL_FIELDS:
+                new_value = getattr(updates, field)
+                if new_value is not None and _norm(new_value) != _norm(getattr(intake, field)):
+                    setattr(intake, field, new_value)
+                    updated_vitals[field] = new_value
+            
+            # TODO: Once scoring is implemented, re-score based on these values
+
+            if updated_vitals:
+                case_update = CaseUpdate(patient_id=patient_id, intake_id=intake_id, updated_vitals=updated_vitals)
+                new_event = EventLog(event_type=EventType.CASE_UPDATED, patient_id=patient_id, intake_id=intake_id)
+                db.add(case_update)
+                db.add(new_event)
+            
+            db.flush()
+            return Result(intake_id)
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.exception("Vitals update failed")
+            raise HTTPException(status_code=500) from e
+    
+
+
+def _norm(value):
+    """DB Numeric -> Decimal, so float 98.6 compares equal to Decimal('98.6')."""
+    return Decimal(str(value)) if isinstance(value, (float, Decimal)) else value

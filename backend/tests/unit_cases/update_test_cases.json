@@ -1,0 +1,233 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — update handling test cases (reqs 1.7, 1.7-T)",
+    "validates": "PATCH /intakes/{id} — clinical update (re-score + reorder), status update (no re-score), disposition (removal), error handling",
+    "how_to_use": "Each case: seed the described patient(s) into the DB + queue, send the PATCH, assert the expected result. 'requires' tags which requirement/dependency the case needs. Clinical-update cases that assert a new ESI need the scoring engine (1.4) to pass; status/disposition/error cases do not.",
+    "endpoint": "PATCH /intakes/{id}",
+    "paths": {
+      "clinical": "vitals/pain change → re-score → rewrite red_flags/red_flag_fired/flag_tier → reorder queue → fires case_updated + reprioritized",
+      "status": "status field change (WAITING/IN_ROOM/DISPOSITIONED) → update triage_queue.status → NO re-score → fires status_changed",
+      "disposition": "status → DISPOSITIONED → remove(intakeId) from queue (remaining order unchanged, rank re-derived on read)"
+    }
+  },
+  "cases": [
+    {
+      "_name": "clinical_update_raises_esi",
+      "requires": "1.7 clinical path + 1.4 scoring",
+      "path": "clinical",
+      "seed": {
+        "intake_id": 5001,
+        "before": {
+          "esi_band": 3,
+          "flag_tier": 3,
+          "heart_rate": 92,
+          "oxygen_saturation": 98
+        }
+      },
+      "patch": {
+        "heart_rate": 138,
+        "oxygen_saturation": 89
+      },
+      "expect": {
+        "rescored": true,
+        "esi_band_changes": true,
+        "esi_band_direction": "up (more severe)",
+        "queue_moved_up": true,
+        "case_update_written": true,
+        "events": [
+          "case_updated",
+          "reprioritized"
+        ]
+      },
+      "needs_scoring": true
+    },
+    {
+      "_name": "clinical_update_partial_only_changes_sent_fields",
+      "requires": "1.7 clinical path",
+      "path": "clinical",
+      "seed": {
+        "intake_id": 5002,
+        "before": {
+          "heart_rate": 100,
+          "pain_level": 4,
+          "respiration_rate": 18
+        }
+      },
+      "patch": {
+        "pain_level": 8
+      },
+      "expect": {
+        "heart_rate_unchanged": true,
+        "respiration_rate_unchanged": true,
+        "pain_level_now": 8,
+        "rescored": true,
+        "case_update_written": true
+      },
+      "needs_scoring": true
+    },
+    {
+      "_name": "clinical_update_fires_flag_tier_rewrite",
+      "requires": "1.7 clinical path + 1.31 red-flag",
+      "path": "clinical",
+      "seed": {
+        "intake_id": 5003,
+        "before": {
+          "esi_band": 2,
+          "flag_tier": 3
+        }
+      },
+      "patch": {
+        "heart_rate": 145,
+        "blood_pressure_systolic": 88
+      },
+      "expect": {
+        "red_flags_rewritten": true,
+        "flag_tier_updated": true,
+        "esi_band_unchanged_by_flag": true,
+        "note": "flag_tier may change ordering within band; it never changes esi_band"
+      },
+      "needs_scoring": true
+    },
+    {
+      "_name": "status_waiting_to_in_room_no_rescore",
+      "requires": "1.7 status path",
+      "path": "status",
+      "seed": {
+        "intake_id": 5004,
+        "before": {
+          "status": "WAITING",
+          "esi_band": 3
+        }
+      },
+      "patch": {
+        "status": "IN_ROOM"
+      },
+      "expect": {
+        "status_now": "IN_ROOM",
+        "rescored": false,
+        "still_in_queue": true,
+        "events": [
+          "status_changed"
+        ],
+        "queue_order_unchanged": true
+      },
+      "needs_scoring": false
+    },
+    {
+      "_name": "status_in_room_back_to_waiting",
+      "requires": "1.7 status path",
+      "path": "status",
+      "seed": {
+        "intake_id": 5005,
+        "before": {
+          "status": "IN_ROOM"
+        }
+      },
+      "patch": {
+        "status": "WAITING"
+      },
+      "expect": {
+        "status_now": "WAITING",
+        "rescored": false,
+        "events": [
+          "status_changed"
+        ],
+        "queue_order_unchanged": true
+      },
+      "needs_scoring": false
+    },
+    {
+      "_name": "disposition_removes_from_queue",
+      "requires": "1.7 disposition path + 1.5 remove(intakeId)",
+      "path": "disposition",
+      "seed": {
+        "queue_before": [
+          {
+            "intake_id": 5010
+          },
+          {
+            "intake_id": 5011
+          },
+          {
+            "intake_id": 5012
+          }
+        ],
+        "target": 5011
+      },
+      "patch": {
+        "status": "DISPOSITIONED"
+      },
+      "expect": {
+        "removed_from_queue": true,
+        "queue_after_order": [
+          5010,
+          5012
+        ],
+        "remaining_order_unchanged": true,
+        "events": [
+          "status_changed"
+        ]
+      },
+      "needs_scoring": false
+    },
+    {
+      "_name": "error_unknown_intake_id_404",
+      "requires": "1.7 error handling",
+      "path": "any",
+      "seed": {
+        "note": "no intake with this id"
+      },
+      "patch_to": "/intakes/999999",
+      "patch": {
+        "pain_level": 5
+      },
+      "expect": {
+        "status_code": 404,
+        "error_code": "not_found"
+      },
+      "needs_scoring": false
+    },
+    {
+      "_name": "error_bad_field_400",
+      "requires": "1.7 error handling",
+      "path": "clinical",
+      "seed": {
+        "intake_id": 5020
+      },
+      "patch": {
+        "heart_rate": -5
+      },
+      "expect": {
+        "status_code": 400,
+        "error_code": "invalid_input"
+      },
+      "needs_scoring": false
+    },
+    {
+      "_name": "error_unscoreable_422",
+      "requires": "1.7 clinical path + 1.4 scoring",
+      "path": "clinical",
+      "seed": {
+        "intake_id": 5021,
+        "before": {
+          "note": "borderline intake; enough data to have scored once"
+        }
+      },
+      "patch": {
+        "heart_rate": null,
+        "blood_pressure_systolic": null,
+        "oxygen_saturation": null,
+        "respiration_rate": null,
+        "pain_level": null,
+        "temperature": null,
+        "blood_sugar": null
+      },
+      "expect": {
+        "status_code": 422,
+        "error_code": "unscoreable",
+        "note": "all scoreable vitals cleared → nothing left for any rule to fire on; chief_complaint is NOT updatable so 422 is triggered via missing vitals, not complaint"
+      },
+      "needs_scoring": true
+    }
+  ]
+}

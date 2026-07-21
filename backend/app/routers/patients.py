@@ -46,11 +46,12 @@ def record_intake(
         return existing.response_body
     result = TriageService.submitIntake(record, db)
 
-    response_body = {"message": "Intake recorded successfully",
-                        "intake_id": result.intake_id,
-                        "severity_score": result.severity_score,
-                        "queue_placement": result.queue_placement
-                        }
+    response_body = {
+        "message": "Intake recorded successfully",
+        "intake_id": result.intake_id,
+        "severity_score": result.severity_score,
+        "queue_placement": result.queue_placement
+    }
     store_idempotency(idempotency_key, request_hash, response_body, status.HTTP_201_CREATED, db)
     try:
         db.commit()

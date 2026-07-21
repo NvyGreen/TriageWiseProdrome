@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
-from app.services.queue_key import sortKey
+from app.services.queue_key import SortKey
 
 
 class NaiveListQueue:
     def __init__(self):
-        self.queue: list[sortKey] = []
+        self.queue: list[SortKey] = []
     
 
     def insert(self, esi_band: int, flag_tier: int, arrival_time: str, intake_id: int, fmt: str | None = None) -> None:
@@ -12,18 +12,28 @@ class NaiveListQueue:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         
-        row = sortKey(esi_band, flag_tier, timestamp.timestamp(), intake_id)
+        row = SortKey(esi_band, flag_tier, timestamp.timestamp(), intake_id)
         self.queue.append(row)
     
 
-    def updatePatientPosition(self, intake_id, esi_band, flag_tier):
-        raise NotImplementedError("Updating patient position not implemented yet")
+    def updatePatientPosition(self, intake_id: int, esi_band: int, flag_tier: int):
+        update_index = -1
+        for i in range(len(self.queue)):
+            if self.queue[i].intake_id == intake_id:
+                update_index = i
+                break
+        
+        if update_index == -1:
+            raise ValueError(f"{intake_id} not in queue")
+        
+        self.queue[update_index].esi_band = esi_band
+        self.queue[update_index].flag_tier = flag_tier
     
 
     def remove(self, intake_id):
         remove_index = -1
-        for i in range(len(self.heap)):
-            if self.heap[i].intakeID == intake_id:
+        for i in range(len(self.queue)):
+            if self.queue[i].intake_id == intake_id:
                 remove_index = i
                 break
         
@@ -37,8 +47,8 @@ class NaiveListQueue:
         if len(self.queue) == 0:
             raise IndexError("Queue is empty")
         i = min(range(len(self.queue)), key=self.queue.__getitem__)
-        return self.queue.pop(i).intakeID
+        return self.queue.pop(i).intake_id
 
     
     def orderedIntakeIds(self) -> list[int]:
-        return [r.intakeID for r in sorted(self.queue)]
+        return [r.intake_id for r in sorted(self.queue)]

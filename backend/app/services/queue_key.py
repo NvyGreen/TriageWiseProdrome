@@ -1,3 +1,9 @@
-from collections import namedtuple
+from dataclasses import dataclass
 
-sortKey = namedtuple("sortKey", ["ESIBand", "flagTier", "arrivalEpoch", "intakeID"])
+
+@dataclass(order=True)
+class SortKey:
+    esi_band: int
+    flag_tier: int
+    arrival_epoch: float
+    intake_id: int

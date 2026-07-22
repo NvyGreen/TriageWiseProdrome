@@ -62,7 +62,7 @@ def _seed(db_session, name, **vitals):
     db_session.flush()
 
     intake = IntakeRecord(
-        patient_id=patient.patient_id, chief_complaint="chest_pain", **vitals
+        patient_id=patient.patient_id, chief_complaint="cardiac", **vitals
     )
     db_session.add(intake)
     db_session.commit()

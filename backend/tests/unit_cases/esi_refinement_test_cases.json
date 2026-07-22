@@ -1,0 +1,248 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — ESI-3 resource refinement cases (reqs 1.4, 1.28, 1.4-T)",
+    "validates": "ScoringEngine.refineByResource — the second step after point-banding",
+    "how_to_use": "Each case: build the intake, call score(), assert initial_esi, resource_level, final esi_band, and the 'refined' flag.",
+    "rule": [
+      "Refinement applies ONLY when the point-banded result is ESI-3 (3-5 points).",
+      "resource_level comes from the fired complaint rule: many -> stays ESI-3 | one -> ESI-4 | none -> ESI-5.",
+      "ESI-1, ESI-2, ESI-4 and ESI-5 bands ignore resource_level entirely.",
+      "refined = true ONLY if the ESI actually moved. Landing on ESI-3 with resource_level 'many' is refined = false."
+    ],
+    "resource_levels": "many: stroke, cardiac, respiratory, neuro, abdominal | one: general, minor_injury, syncope | none: minor_general"
+  },
+  "cases": [
+    {
+      "_name": "esi3_many_resources_stays_esi3",
+      "_why": "Abdominal (many) + HR>=121 = 5 points -> ESI-3; many resources means it stays.",
+      "intake": {
+        "chief_complaint": "abdominal",
+        "heart_rate": 124,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 3
+      },
+      "expect": {
+        "severity_score": 5,
+        "initial_esi": 3,
+        "resource_level": "many",
+        "esi_band": 3,
+        "refined": false
+      }
+    },
+    {
+      "_name": "esi3_one_resource_refines_to_esi4",
+      "_why": "Syncope (one) + pain>=7 = 4 points -> ESI-3; one resource pulls it to ESI-4.",
+      "intake": {
+        "chief_complaint": "syncope",
+        "heart_rate": 84,
+        "blood_pressure_systolic": 118,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 7
+      },
+      "expect": {
+        "severity_score": 4,
+        "initial_esi": 3,
+        "resource_level": "one",
+        "esi_band": 4,
+        "refined": true
+      }
+    },
+    {
+      "_name": "esi3_no_resources_refines_to_esi5",
+      "_why": "Minor complaint (none) + SpO2<=91 = 5 points -> ESI-3; no resources drops it to ESI-5.",
+      "intake": {
+        "chief_complaint": "minor_general",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 90,
+        "respiration_rate": 18,
+        "pain_level": 2
+      },
+      "expect": {
+        "severity_score": 5,
+        "initial_esi": 3,
+        "resource_level": "none",
+        "esi_band": 5,
+        "refined": true
+      }
+    },
+    {
+      "_name": "esi3_lower_edge_3_points_one_resource",
+      "_why": "Lower boundary of the ESI-3 band (3 points) still refines.",
+      "intake": {
+        "chief_complaint": "syncope",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 2
+      },
+      "expect": {
+        "severity_score": 3,
+        "initial_esi": 3,
+        "resource_level": "one",
+        "esi_band": 4,
+        "refined": true
+      }
+    },
+    {
+      "_name": "esi3_upper_edge_5_points_one_resource",
+      "_why": "Upper boundary of the ESI-3 band (5 points) also refines.",
+      "intake": {
+        "chief_complaint": "general",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 89,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 0
+      },
+      "expect": {
+        "severity_score": 5,
+        "initial_esi": 3,
+        "resource_level": "one",
+        "esi_band": 4,
+        "refined": true
+      }
+    },
+    {
+      "_name": "esi1_ignores_resource_level",
+      "_why": "Cardiac (many) at 13 points is ESI-1 — refinement must not run.",
+      "intake": {
+        "chief_complaint": "cardiac",
+        "heart_rate": 128,
+        "blood_pressure_systolic": 118,
+        "oxygen_saturation": 89,
+        "respiration_rate": 20,
+        "pain_level": 5
+      },
+      "expect": {
+        "severity_score": 13,
+        "initial_esi": 1,
+        "resource_level": "many",
+        "esi_band": 1,
+        "refined": false
+      }
+    },
+    {
+      "_name": "esi2_ignores_resource_level",
+      "_why": "Stroke (many) at 6 points is ESI-2 — untouched by refinement.",
+      "intake": {
+        "chief_complaint": "stroke",
+        "heart_rate": 84,
+        "blood_pressure_systolic": 122,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 3
+      },
+      "expect": {
+        "severity_score": 6,
+        "initial_esi": 2,
+        "resource_level": "many",
+        "esi_band": 2,
+        "refined": false
+      }
+    },
+    {
+      "_name": "esi2_with_one_resource_complaint_still_ignores",
+      "_why": "Syncope (one) at 6 points bands to ESI-2; a 'one' resource level must NOT drag it down.",
+      "intake": {
+        "chief_complaint": "syncope",
+        "heart_rate": 124,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 0
+      },
+      "expect": {
+        "severity_score": 6,
+        "initial_esi": 2,
+        "resource_level": "one",
+        "esi_band": 2,
+        "refined": false
+      }
+    },
+    {
+      "_name": "esi4_band_ignores_resource_level",
+      "_why": "Already ESI-4 by points (2). Refinement does not apply, even with 'none'.",
+      "intake": {
+        "chief_complaint": "minor_general",
+        "heart_rate": 110,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 0
+      },
+      "expect": {
+        "severity_score": 2,
+        "initial_esi": 4,
+        "resource_level": "none",
+        "esi_band": 4,
+        "refined": false
+      }
+    },
+    {
+      "_name": "esi4_band_with_many_resources_not_promoted",
+      "_why": "Guard against the reverse error: 'many' must never promote an ESI-4 up to ESI-3.",
+      "intake": {
+        "chief_complaint": "abdominal",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 0
+      },
+      "expect": {
+        "severity_score": 2,
+        "initial_esi": 4,
+        "resource_level": "many",
+        "esi_band": 4,
+        "refined": false
+      }
+    },
+    {
+      "_name": "no_complaint_rule_fires_raises",
+      "_why": "With rule 13 deactivated no complaint rule fires, so nothing supplies a resource_level. The engine must raise rather than default — silently treating 'no rule fired' as 'none' would drop the patient to ESI-5, an under-triage caused by a config toggle.",
+      "setup": {
+        "deactivate_rules": [
+          13
+        ]
+      },
+      "intake": {
+        "chief_complaint": "general",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 0
+      },
+      "expect": {
+        "raises": "TypeError",
+        "no_score_produced": true,
+        "note": "resource_level is None because no complaint rule fired. TypeError for now; TriageService will translate it to a 422 unscoreable when the API is wired."
+      }
+    },
+    {
+      "_name": "initial_esi_preserved_after_refinement",
+      "_why": "initialEsi must still read 3 after the result moves to 4 — the explanation needs both.",
+      "intake": {
+        "chief_complaint": "minor_injury",
+        "heart_rate": 124,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 0
+      },
+      "expect": {
+        "severity_score": 4,
+        "initial_esi": 3,
+        "resource_level": "one",
+        "esi_band": 4,
+        "refined": true,
+        "initial_esi_still_reported": true
+      }
+    }
+  ]
+}

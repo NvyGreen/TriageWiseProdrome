@@ -43,7 +43,7 @@ def _seed(db_session, name="Update Patient", **vitals):
 
     intake = IntakeRecord(
         patient_id=patient.patient_id,
-        chief_complaint="chest_pain",
+        chief_complaint="cardiac",
         **vitals,
     )
     db_session.add(intake)

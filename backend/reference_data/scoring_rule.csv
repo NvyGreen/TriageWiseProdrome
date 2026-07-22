@@ -1,17 +1,17 @@
-rule_id,factor,threshold,weight,complaint_group,resource_level,esi_anchor,fallback_if_missing
-1,SpO2,< 92%,4,,,Hypoxia — ESI-2 danger vital,"assume normal, confidence LOW, flag re-measure"
-2,SpO2,92-94% (borderline),2,,,Borderline low,"assume normal, confidence LOW, flag re-measure"
-3,Heart rate,> 120 bpm,3,,,Marked tachycardia,"skip rule, confidence LOW"
-4,Heart rate,100-120 bpm,1,,,Mild tachycardia,"skip rule, confidence LOW"
-5,Respiratory rate,> 24 /min,3,,,Tachypnea,"skip rule, confidence LOW"
-6,Systolic BP,< 90 mmHg,4,,,Hypotension/shock — ESI-1/2,"skip rule, confidence LOW"
-7,Pain score,>= 7/10,1,,,Severe pain modifier,"assume 0, note in gap"
-8,Chief complaint,stroke symptoms (FAST),6,stroke,many,Time-critical → push ESI-2; NHAMCS stroke ~53% admit,required field - cannot be missing (1.22)
-9,Chief complaint,chest pain (cardiac concern),6,cardiac,many,Cardiac dx ~70% admit vs 14% all chest pain → ESI-2,required field - cannot be missing (1.22)
-10,Chief complaint,shortness of breath,4,respiratory,many,NHAMCS SOB ~26% admit,required field - cannot be missing (1.22)
-11,Chief complaint,severe headache / neuro,4,neuro,many,High-risk neuro presentation,required field - cannot be missing (1.22)
-12,Chief complaint,abdominal pain,2,abdominal,many,NHAMCS abdo ~9% admit — lower baseline,required field - cannot be missing (1.22)
-13,Chief complaint,other / general,1,general,one,Default low weight,required field - cannot be missing (1.22)
-14,Chief complaint,"minor injury (sprain, small laceration)",1,minor_injury,one,single X-ray or repair,required field - cannot be missing (1.22)
-15,Chief complaint,"minor complaint (rash, med refill, cold)",1,minor_general,none,"exam only, fast-track",required field - cannot be missing (1.22)
-16,Chief complaint,syncope (fainting),3,syncope,one,"ECG, labs, monitor — NHAMCS ~21% admit",required field - cannot be missing (1.22)
+rule_id,rule_type,factor,min_bound,max_bound,units,threshold_display,weight,complaint_group,resource_level,esi_anchor,fallback_if_missing
+1,vital,SpO2,,91,%,< 92%,4,,,Hypoxia — ESI-2 danger vital,"assume normal, confidence LOW, flag re-measure"
+2,vital,SpO2,92,94,%,92-94% (borderline),2,,,Borderline low,"assume normal, confidence LOW, flag re-measure"
+3,vital,Heart rate,121,,bpm,> 120 bpm,3,,,Marked tachycardia,"skip rule, confidence LOW"
+4,vital,Heart rate,100,120,bpm,100-120 bpm,1,,,Mild tachycardia,"skip rule, confidence LOW"
+5,vital,Respiratory rate,25,,/min,> 24 /min,3,,,Tachypnea,"skip rule, confidence LOW"
+6,vital,Systolic BP,,89,mmHg,< 90 mmHg,4,,,Hypotension/shock — ESI-1/2,"skip rule, confidence LOW"
+7,vital,Pain score,7,,/10,>= 7/10,1,,,Severe pain modifier,"assume 0, note in gap"
+8,complaint,Chief complaint,,,,stroke symptoms (FAST),6,stroke,many,Time-critical → push ESI-2; NHAMCS stroke ~53% admit,required field - cannot be missing
+9,complaint,Chief complaint,,,,chest pain (cardiac concern),6,cardiac,many,Cardiac dx ~70% admit vs 14% all chest pain → ESI-2,required field - cannot be missing
+10,complaint,Chief complaint,,,,shortness of breath,4,respiratory,many,NHAMCS SOB ~26% admit,required field - cannot be missing
+11,complaint,Chief complaint,,,,severe headache / neuro,4,neuro,many,High-risk neuro presentation,required field - cannot be missing
+12,complaint,Chief complaint,,,,abdominal pain,2,abdominal,many,NHAMCS abdo ~9% admit — lower baseline,required field - cannot be missing
+13,complaint,Chief complaint,,,,other / general,1,general,one,Default low weight,required field - cannot be missing
+14,complaint,Chief complaint,,,,"minor injury (sprain, small laceration)",1,minor_injury,one,single X-ray or repair,required field - cannot be missing
+15,complaint,Chief complaint,,,,"minor complaint (rash, med refill, cold)",1,minor_general,none,"exam only, fast-track",required field - cannot be missing
+16,complaint,Chief complaint,,,,syncope (fainting),3,syncope,one,"ECG, labs, monitor — NHAMCS ~21% admit",required field - cannot be missing

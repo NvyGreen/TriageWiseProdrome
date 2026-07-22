@@ -30,7 +30,7 @@
           "name": "Jordan Ellis",
           "date_of_birth": "1958-03-14",
           "sex": "M",
-          "chief_complaint": "chest_pain",
+          "chief_complaint": "cardiac",
           "symptoms": [
             "chest tightness",
             "left arm discomfort"
@@ -82,7 +82,7 @@
           "Idempotency-Key": "req_01H9XYZ_bad400"
         },
         "body": {
-          "chief_complaint": "chest_pain",
+          "chief_complaint": "cardiac",
           "symptoms": [
             "chest tightness"
           ],
@@ -175,7 +175,7 @@
           "Idempotency-Key": "req_01H9XYZ_unscore"
         },
         "body": {
-          "chief_complaint": "other_general",
+          "chief_complaint": "general",
           "symptoms": []
         }
       },
@@ -276,7 +276,7 @@
             "date_of_birth": "1958-03-14"
           },
           "intake": {
-            "chief_complaint": "chest_pain",
+            "chief_complaint": "cardiac",
             "symptoms": [
               "chest tightness",
               "left arm discomfort"
@@ -422,7 +422,7 @@
       "request": {
         "path": "/intakes/4021",
         "body": {
-          "chief_complaint": "other_general"
+          "chief_complaint": "general"
         }
       },
       "response": {

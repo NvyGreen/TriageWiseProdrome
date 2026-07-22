@@ -5,15 +5,15 @@ from ..utils.dates import age_from_dob
 
 
 class ChiefComplaint(StrEnum):
-    STROKE_SYMPTOMS = "stroke_symptoms"
-    CHEST_PAIN = "chest_pain"
-    SHORTNESS_OF_BREATH = "shortness_of_breath"
-    SEVERE_HEADACHE = "severe_headache"
+    CARDIAC = "cardiac"
+    RESPIRATORY = "respiratory"
+    ABDOMINAL = "abdominal"
+    STROKE = "stroke"
     SYNCOPE = "syncope"
-    ABDOMINAL_PAIN = "abdominal_pain"
+    NEURO = "neuro"
     MINOR_INJURY = "minor_injury"
-    MINOR_COMPLAINT = "minor_complaint"
-    OTHER_GENERAL = "other_general"
+    MINOR_GENERAL = "minor_general"
+    GENERAL = "general"
 
 
 class PreExistingConditions(StrEnum):

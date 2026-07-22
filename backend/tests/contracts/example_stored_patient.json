@@ -11,7 +11,7 @@
   "intake_record": {
     "intake_id": 501,
     "patient_id": 124,
-    "chief_complaint": "chest_pain",
+    "chief_complaint": "cardiac",
     "symptoms": ["chest_pain", "dizziness"],
     "heart_rate": 120,
     "blood_pressure_systolic": 140,

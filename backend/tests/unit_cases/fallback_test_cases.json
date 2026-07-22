@@ -1,0 +1,156 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — missing-data fallback cases (reqs 1.2, 1.2-T)",
+    "validates": "ScoringEngine.applyFallback + the four data-quality signals on SeverityResult",
+    "how_to_use": "Each case: build the intake with the named fields absent (null / omitted), call score(), assert the score plus missing_fields, fallbacks_applied, data_completeness and confidence.",
+    "fallback_rules": {
+      "oxygen_saturation": "assume normal, confidence LOW, flag re-measure  -> action: assumed_normal",
+      "heart_rate": "skip rule, confidence LOW  -> action: rule_skipped",
+      "respiration_rate": "skip rule, confidence LOW  -> action: rule_skipped",
+      "blood_pressure_systolic": "skip rule, confidence LOW  -> action: rule_skipped",
+      "pain_level": "assume 0, note in gap  -> action: assumed_zero (confidence NOT lowered)",
+      "chief_complaint": "required field - cannot be missing -> 422 unscoreable, no fallback"
+    },
+    "signals": [
+      "missing_fields: which inputs were absent.",
+      "fallbacks_applied: per-field action taken, e.g. [{field: oxygen_saturation, action: assumed_normal}].",
+      "data_completeness: how many of the 5 scoreable vitals were supplied (SpO2, HR, RR, SBP, pain).",
+      "confidence: LOW if any fired fallback specifies confidence LOW; otherwise HIGH.",
+      "Assumed-normal and rule-skipped both contribute 0 points here, but they are NOT the same thing and must be reported differently."
+    ]
+  },
+
+  "cases": [
+    {
+      "_name": "all_vitals_present_high_confidence",
+      "_why": "Control case — nothing missing, so no fallback and confidence stays HIGH.",
+      "intake": {"chief_complaint": "cardiac", "heart_rate": 124, "blood_pressure_systolic": 118, "oxygen_saturation": 96, "respiration_rate": 18, "pain_level": 3},
+      "expect": {
+        "severity_score": 9,
+        "esi_band": 1,
+        "missing_fields": [],
+        "fallbacks_applied": [],
+        "data_completeness": "5 of 5",
+        "confidence": "HIGH"
+      }
+    },
+    {
+      "_name": "spo2_missing_assumed_normal",
+      "_why": "SpO2 absent: assume normal (no points) and drop confidence to LOW.",
+      "intake": {"chief_complaint": "respiratory", "heart_rate": 84, "blood_pressure_systolic": 120, "oxygen_saturation": null, "respiration_rate": 18, "pain_level": 2},
+      "expect": {
+        "severity_score": 4,
+        "esi_band": 3,
+        "missing_fields": ["oxygen_saturation"],
+        "fallbacks_applied": [{"field": "oxygen_saturation", "action": "assumed_normal"}],
+        "data_completeness": "4 of 5",
+        "confidence": "LOW"
+      }
+    },
+    {
+      "_name": "heart_rate_missing_rule_skipped",
+      "_why": "HR absent: skip the HR rules entirely, confidence LOW.",
+      "intake": {"chief_complaint": "abdominal", "heart_rate": null, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 2},
+      "expect": {
+        "severity_score": 2,
+        "esi_band": 4,
+        "missing_fields": ["heart_rate"],
+        "fallbacks_applied": [{"field": "heart_rate", "action": "rule_skipped"}],
+        "data_completeness": "4 of 5",
+        "confidence": "LOW"
+      }
+    },
+    {
+      "_name": "pain_missing_assumed_zero_confidence_stays_high",
+      "_why": "Pain is the only fallback that does NOT lower confidence — it assumes 0 and notes the gap.",
+      "intake": {"chief_complaint": "cardiac", "heart_rate": 84, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": null},
+      "expect": {
+        "severity_score": 6,
+        "esi_band": 2,
+        "missing_fields": ["pain_level"],
+        "fallbacks_applied": [{"field": "pain_level", "action": "assumed_zero"}],
+        "data_completeness": "4 of 5",
+        "confidence": "HIGH"
+      }
+    },
+    {
+      "_name": "assumed_normal_and_skipped_reported_differently",
+      "_why": "SpO2 and HR both absent and both add 0 points — but the actions must be distinguishable to a clinician.",
+      "intake": {"chief_complaint": "neuro", "heart_rate": null, "blood_pressure_systolic": 120, "oxygen_saturation": null, "respiration_rate": 18, "pain_level": 3},
+      "expect": {
+        "severity_score": 4,
+        "esi_band": 3,
+        "missing_fields": ["heart_rate", "oxygen_saturation"],
+        "fallbacks_applied": [
+          {"field": "oxygen_saturation", "action": "assumed_normal"},
+          {"field": "heart_rate", "action": "rule_skipped"}
+        ],
+        "data_completeness": "3 of 5",
+        "confidence": "LOW",
+        "actions_are_distinct": true
+      }
+    },
+    {
+      "_name": "all_vitals_missing_complaint_only",
+      "_why": "Worst realistic case — only the complaint scored. Still scoreable, but confidence LOW and completeness 0 of 5.",
+      "intake": {"chief_complaint": "stroke", "heart_rate": null, "blood_pressure_systolic": null, "oxygen_saturation": null, "respiration_rate": null, "pain_level": null},
+      "expect": {
+        "severity_score": 6,
+        "esi_band": 2,
+        "missing_fields": ["heart_rate", "blood_pressure_systolic", "oxygen_saturation", "respiration_rate", "pain_level"],
+        "fallbacks_applied": [
+          {"field": "oxygen_saturation", "action": "assumed_normal"},
+          {"field": "heart_rate", "action": "rule_skipped"},
+          {"field": "respiration_rate", "action": "rule_skipped"},
+          {"field": "blood_pressure_systolic", "action": "rule_skipped"},
+          {"field": "pain_level", "action": "assumed_zero"}
+        ],
+        "data_completeness": "0 of 5",
+        "confidence": "LOW"
+      }
+    },
+    {
+      "_name": "fallback_never_invents_points",
+      "_why": "A missing SpO2 must add 0 — assuming normal must never fire rule 1 or rule 2.",
+      "intake": {"chief_complaint": "minor_general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": null, "respiration_rate": 18, "pain_level": 0},
+      "expect": {
+        "severity_score": 1,
+        "esi_band": 4,
+        "fallbacks_applied": [{"field": "oxygen_saturation", "action": "assumed_normal"}],
+        "no_spo2_rule_fired": true,
+        "confidence": "LOW"
+      }
+    },
+    {
+      "_name": "missing_vital_does_not_change_band_for_present_vitals",
+      "_why": "Absent RR must not suppress the rules that DID fire (HR and SpO2 still score).",
+      "intake": {"chief_complaint": "general", "heart_rate": 124, "blood_pressure_systolic": 120, "oxygen_saturation": 90, "respiration_rate": null, "pain_level": 0},
+      "expect": {
+        "severity_score": 8,
+        "esi_band": 1,
+        "missing_fields": ["respiration_rate"],
+        "fallbacks_applied": [{"field": "respiration_rate", "action": "rule_skipped"}],
+        "data_completeness": "4 of 5",
+        "confidence": "LOW"
+      }
+    },
+    {
+      "_name": "fallback_used_flag_set_on_persist",
+      "_why": "patient_severity.fallback_applied must be written (non-empty) whenever any fallback fired.",
+      "intake": {"chief_complaint": "syncope", "heart_rate": null, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 2},
+      "expect": {
+        "severity_score": 3,
+        "esi_band": 4,
+        "fallbacks_applied": [{"field": "heart_rate", "action": "rule_skipped"}],
+        "persisted_fallback_applied_non_empty": true,
+        "persisted_confidence": "LOW"
+      }
+    },
+    {
+      "_name": "missing_chief_complaint_is_unscoreable",
+      "_why": "chief_complaint has no fallback — it is required. Nothing can be scored, so this is 422, not a fallback path.",
+      "intake": {"chief_complaint": null, "heart_rate": 124, "blood_pressure_systolic": 118, "oxygen_saturation": 90, "respiration_rate": 26, "pain_level": 8},
+      "expect": {"status_code": 422, "error_code": "unscoreable", "no_score_produced": true}
+    }
+  ]
+}

@@ -9,7 +9,7 @@ from .dependencies import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
 from .routers import patients, queue, intakes
-from .services.triage_service import IntakeNotFoundError
+from .services.triage_service import IntakeNotFoundError, UnscoreableException
 
 
 class MedicalDisclaimerResponse(JSONResponse):
@@ -126,8 +126,7 @@ async def patient_duplicate_handler(request: Request, exc: patients.DuplicateReq
         }
     )
 
-@patients_app.exception_handler(patients.UnscoreableException)
-async def patient_unscoreable_handler(request: Request, exc: patients.UnscoreableException):
+async def unscoreable_handler(request: Request, exc: UnscoreableException):
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
@@ -158,6 +157,7 @@ for sub_app in (patients_app, queue_app, intakes_app):
 
 for sub_app in (patients_app, intakes_app):
     sub_app.add_exception_handler(RequestValidationError, validation_handler)
+    sub_app.add_exception_handler(UnscoreableException, unscoreable_handler)
 
 
 patients_app.include_router(patients.router)

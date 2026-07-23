@@ -1,0 +1,152 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — scoring engine unit cases (reqs 1.4, 1.12, 1.4-T)",
+    "validates": "ScoringEngine.score(intake) — rule firing, weight summation, point-to-band mapping",
+    "how_to_use": "Each case: build an intake from 'intake', call score(), assert 'expect'. These test rule firing and totals — ESI-3 resource refinement is covered in esi_refinement_test_cases.json, missing-data fallback in fallback_test_cases.json.",
+    "rule_reference": {
+      "vitals": "1 SpO2<=91 (+4) | 2 SpO2 92-94 (+2) | 3 HR>=121 (+3) | 4 HR 100-120 (+1) | 5 RR>=25 (+3) | 6 SBP<=89 (+4) | 7 pain>=7 (+1)",
+      "complaints": "8 stroke (+6) | 9 cardiac (+6) | 10 respiratory (+4) | 11 neuro (+4) | 12 abdominal (+2) | 13 general (+1) | 14 minor_injury (+1) | 15 minor_general (+1) | 16 syncope (+3)",
+      "bands": "8-99 ESI-1 | 6-7 ESI-2 | 3-5 ESI-3 | 1-2 ESI-4 | 0 ESI-5"
+    },
+    "conventions": [
+      "chief_complaint stores the complaint_group key (stroke, cardiac...), never display text.",
+      "Vital rules fire on inclusive bounds: min_bound <= value <= max_bound; a blank bound is open-ended.",
+      "Vital ranges for the same factor are mutually exclusive — at most one HR rule and one SpO2 rule can fire.",
+      "All vitals supplied in these cases so no fallback path is exercised."
+    ]
+  },
+
+  "cases": [
+    {
+      "_name": "complaint_only_minor_general",
+      "_why": "Lowest-weight complaint alone; all vitals normal so no vital rule fires.",
+      "intake": {"chief_complaint": "minor_general", "heart_rate": 78, "blood_pressure_systolic": 118, "oxygen_saturation": 98, "respiration_rate": 16, "pain_level": 2},
+      "expect": {"fired_rules": [15], "severity_score": 1, "esi_band": 4}
+    },
+    {
+      "_name": "complaint_only_cardiac",
+      "_why": "Highest-weight complaint alone lands squarely in ESI-2 (6-7).",
+      "intake": {"chief_complaint": "cardiac", "heart_rate": 82, "blood_pressure_systolic": 122, "oxygen_saturation": 97, "respiration_rate": 15, "pain_level": 3},
+      "expect": {"fired_rules": [9], "severity_score": 6, "esi_band": 2}
+    },
+    {
+      "_name": "single_vital_hr_marked_tachycardia",
+      "_why": "HR 128 fires rule 3 (>=121), not rule 4 — ranges are exclusive.",
+      "intake": {"chief_complaint": "general", "heart_rate": 128, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 2},
+      "expect": {"fired_rules": [13, 3], "severity_score": 4, "esi_band": 3}
+    },
+    {
+      "_name": "single_vital_hr_mild_tachycardia",
+      "_why": "HR 110 fires rule 4 (100-120) only.",
+      "intake": {"chief_complaint": "general", "heart_rate": 110, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 2},
+      "expect": {"fired_rules": [13, 4], "severity_score": 2, "esi_band": 4}
+    },
+    {
+      "_name": "boundary_hr_120_is_mild_not_marked",
+      "_why": "Upper edge of rule 4. 120 <= 120 fires rule 4; rule 3 needs >=121.",
+      "intake": {"chief_complaint": "general", "heart_rate": 120, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13, 4], "severity_score": 2, "esi_band": 4}
+    },
+    {
+      "_name": "boundary_hr_121_is_marked",
+      "_why": "Lower edge of rule 3 — one bpm higher flips the rule and the weight.",
+      "intake": {"chief_complaint": "general", "heart_rate": 121, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13, 3], "severity_score": 4, "esi_band": 3}
+    },
+    {
+      "_name": "boundary_hr_99_fires_no_hr_rule",
+      "_why": "Just below rule 4's lower bound — no HR rule fires at all.",
+      "intake": {"chief_complaint": "general", "heart_rate": 99, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13], "severity_score": 1, "esi_band": 4}
+    },
+    {
+      "_name": "boundary_spo2_91_is_hypoxia",
+      "_why": "Upper edge of rule 1 (<=91).",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 91, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13, 1], "severity_score": 5, "esi_band": 3}
+    },
+    {
+      "_name": "boundary_spo2_92_is_borderline",
+      "_why": "Lower edge of rule 2 (92-94) — weight drops from 4 to 2.",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 92, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13, 2], "severity_score": 3, "esi_band": 3}
+    },
+    {
+      "_name": "boundary_spo2_95_fires_nothing",
+      "_why": "Just above rule 2's upper bound.",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 95, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13], "severity_score": 1, "esi_band": 4}
+    },
+    {
+      "_name": "boundary_pain_7_fires",
+      "_why": "Rule 7 is >=7 — inclusive at 7.",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 7},
+      "expect": {"fired_rules": [13, 7], "severity_score": 2, "esi_band": 4}
+    },
+    {
+      "_name": "boundary_pain_6_does_not_fire",
+      "_why": "One below the pain threshold.",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 6},
+      "expect": {"fired_rules": [13], "severity_score": 1, "esi_band": 4}
+    },
+    {
+      "_name": "boundary_sbp_89_is_hypotension",
+      "_why": "Upper edge of rule 6 (<=89).",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 89, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 0},
+      "expect": {"fired_rules": [13, 6], "severity_score": 5, "esi_band": 3}
+    },
+    {
+      "_name": "boundary_rr_25_is_tachypnea",
+      "_why": "Lower edge of rule 5 (>=25).",
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 25, "pain_level": 0},
+      "expect": {"fired_rules": [13, 5], "severity_score": 4, "esi_band": 3}
+    },
+    {
+      "_name": "multiple_vitals_plus_complaint_esi1",
+      "_why": "Cardiac (6) + HR>=121 (3) + SpO2<=91 (4) = 13 -> ESI-1.",
+      "intake": {"chief_complaint": "cardiac", "heart_rate": 128, "blood_pressure_systolic": 118, "oxygen_saturation": 89, "respiration_rate": 20, "pain_level": 5},
+      "expect": {"fired_rules": [9, 3, 1], "severity_score": 13, "esi_band": 1}
+    },
+    {
+      "_name": "band_boundary_7_is_esi2",
+      "_why": "Upper edge of the ESI-2 band. Stroke (6) + pain>=7 (1) = 7.",
+      "intake": {"chief_complaint": "stroke", "heart_rate": 88, "blood_pressure_systolic": 130, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 8},
+      "expect": {"fired_rules": [8, 7], "severity_score": 7, "esi_band": 2}
+    },
+    {
+      "_name": "band_boundary_8_is_esi1",
+      "_why": "Lower edge of ESI-1. Stroke (6) + HR 100-120 (1) + pain (1) = 8.",
+      "intake": {"chief_complaint": "stroke", "heart_rate": 110, "blood_pressure_systolic": 130, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 8},
+      "expect": {"fired_rules": [8, 4, 7], "severity_score": 8, "esi_band": 1}
+    },
+    {
+      "_name": "inactive_rule_is_skipped",
+      "_why": "With rule 7 set is_active=false, a pain of 9 contributes nothing.",
+      "setup": {"deactivate_rules": [7]},
+      "intake": {"chief_complaint": "general", "heart_rate": 80, "blood_pressure_systolic": 120, "oxygen_saturation": 97, "respiration_rate": 18, "pain_level": 9},
+      "expect": {"fired_rules": [13], "severity_score": 1, "esi_band": 4}
+    },
+    {
+      "_name": "determinism_same_input_same_score",
+      "_why": "Same intake scored twice must produce identical output (req 1.4 DoD).",
+      "intake": {"chief_complaint": "respiratory", "heart_rate": 115, "blood_pressure_systolic": 105, "oxygen_saturation": 93, "respiration_rate": 26, "pain_level": 4},
+      "expect": {"fired_rules": [10, 4, 2, 5], "severity_score": 10, "esi_band": 1, "run_twice_identical": true}
+    },
+    {
+      "_name": "drivers_trace_to_fired_rules_only",
+      "_why": "namedDrivers must contain one Driver per fired rule, each with the patient's actual value — no invented drivers.",
+      "intake": {"chief_complaint": "abdominal", "heart_rate": 124, "blood_pressure_systolic": 118, "oxygen_saturation": 96, "respiration_rate": 18, "pain_level": 8},
+      "expect": {
+        "fired_rules": [12, 3, 7],
+        "severity_score": 6,
+        "esi_band": 2,
+        "named_drivers": [
+          {"rule_id": 12, "factor": "Chief complaint", "patient_value": "abdominal", "weight": 2},
+          {"rule_id": 3, "factor": "Heart rate", "patient_value": 124, "weight": 3},
+          {"rule_id": 7, "factor": "Pain score", "patient_value": 8, "weight": 1}
+        ],
+        "driver_count_equals_fired_rules": true
+      }
+    }
+  ]
+}

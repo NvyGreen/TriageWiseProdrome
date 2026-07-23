@@ -45,7 +45,7 @@ def _seed(db_session, name, dob=date(1980, 5, 17), system_esi=None,
     db_session.add(patient)
     db_session.flush()
 
-    intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint="chest_pain")
+    intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint="cardiac")
     db_session.add(intake)
     db_session.flush()
 

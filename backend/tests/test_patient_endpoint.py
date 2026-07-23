@@ -22,6 +22,9 @@ import copy
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import update
+
+from app.models.scoring_rule import ScoringRule
 
 # v30 canonical error messages (source of truth: API_Reference_v30.md).
 INVALID_INPUT_MESSAGE = "One or more fields are invalid."
@@ -211,13 +214,30 @@ def test_expired_key_reprocesses(client, api_examples):
     assert second.json()["payload"]["intake_id"] != first_id
 
 
-@pytest.mark.skip(
-    reason="scoreability check not wired up (422 trigger commented out in routers/patients.py)"
-)
-def test_unscoreable_intake_returns_422(client, api_examples):
-    """v30: well-formed but unscoreable body -> 422 unscoreable."""
-    body = api_examples["POST /patients"]["unscoreable_422"]["request"]["body"]
-    resp = client.post("/patients/", json=body, headers={"Idempotency-Key": _unique_key()})
+def test_unscoreable_intake_returns_422(client, db_session, api_examples):
+    """Well-formed, complete body but nothing can score -> 422 unscoreable.
 
-    assert resp.status_code == 422
-    assert resp.json()["error"]["code"] == "unscoreable"
+    Every valid complaint maps to an active rule, so a real POST always scores.
+    This path is only reachable by deactivating the matching complaint rule
+    (config-toggle, not client-triggerable) — so the test flips is_active off,
+    then restores it in finally to keep the shared test DB clean.
+    """
+    case = api_examples["POST /patients"]["unscoreable_422"]
+    body = case["request"]["body"]
+    (rule_id,) = case["setup"]["deactivate_rules"]
+
+    db_session.execute(
+        update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=False)
+    )
+    db_session.commit()
+    try:
+        resp = client.post("/patients/", json=body, headers={"Idempotency-Key": _unique_key()})
+        assert resp.status_code == 422
+        err = resp.json()["error"]
+        assert err["code"] == "unscoreable"
+        assert err["message"] == case["response"]["body"]["error"]["message"]
+    finally:
+        db_session.execute(
+            update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=True)
+        )
+        db_session.commit()

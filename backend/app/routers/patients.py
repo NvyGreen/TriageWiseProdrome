@@ -17,11 +17,8 @@ from ..services.triage_service import TriageService
 # DuplicateRequestException / IdempotencyKeyRequiredException are defined in the
 # idempotency service and re-exported here so main.py's `patients.X` handler
 # registrations keep resolving.
-__all__ = ["router", "DuplicateRequestException", "IdempotencyKeyRequiredException", "UnscoreableException"]
+__all__ = ["router", "DuplicateRequestException", "IdempotencyKeyRequiredException"]
 logger = logging.getLogger(__name__)
-
-class UnscoreableException(Exception):
-    pass
 
 router = APIRouter()
 
@@ -37,6 +34,7 @@ def record_intake(
     # is a 400 from the validation handler instead of a DataError at commit.
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=64),
 ):
+    triageService = TriageService(db)
     request_hash = hash_payload(record)
     existing = check_idempotency(idempotency_key, request_hash, db)
     if existing is not None:
@@ -44,8 +42,8 @@ def record_intake(
         # handler dict, so returning it re-wraps identically via the default
         # response class (all stored responses are 201 successes).
         return existing.response_body
-    result = TriageService.submitIntake(record, db)
-
+    
+    result = triageService.submitIntake(record)
     response_body = {
         "message": "Intake recorded successfully",
         "intake_id": result.intake_id,

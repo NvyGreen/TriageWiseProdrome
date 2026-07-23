@@ -2,7 +2,7 @@
   "name": "Robert Johnson",
   "date_of_birth": "1958-03-12",
   "sex": "M",
-  "chief_complaint": "chest_pain",
+  "chief_complaint": "cardiac",
   "symptoms": ["chest_pain", "dizziness"],
   "heart_rate": 120,
   "blood_pressure_systolic": 140,

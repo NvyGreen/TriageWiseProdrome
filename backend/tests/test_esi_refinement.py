@@ -19,7 +19,7 @@ from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
-from app.services.scoring_engine import ScoringEngine
+from app.services.scoring_engine import ScoringEngine, CannotScoreError
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "esi_refinement_test_cases.json").read_text(encoding="utf-8"))["cases"]
@@ -56,7 +56,7 @@ def test_refinement(case, db_session):
 
 
 def test_no_complaint_rule_fires_raises(db_session):
-    """Rule 13 off -> no complaint fires -> resource_level None -> TypeError.
+    """Rule 13 off -> no complaint fires -> resource_level None -> CannotScoreError.
 
     Refusing to score beats silently defaulting to 'none' (which would drop the
     patient to ESI-5 — an under-triage from a config toggle). The raise happens
@@ -73,7 +73,7 @@ def test_no_complaint_rule_fires_raises(db_session):
         engine = ScoringEngine(db_session)  # snapshot excludes the disabled rule
         intake = _seed_intake(db_session, case["intake"])
 
-        with pytest.raises(TypeError):
+        with pytest.raises(CannotScoreError):
             engine.score(intake, db_session)
         db_session.rollback()
 

@@ -23,6 +23,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from sqlalchemy import update
 
 from app.dependencies import get_queue
 from app.main import intakes_app
@@ -30,6 +31,7 @@ from app.models.case_update import CaseUpdate
 from app.models.event_log import EventLog
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
+from app.models.scoring_rule import ScoringRule
 from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import EventType
 
@@ -152,3 +154,42 @@ def test_bad_field_returns_400(client, db_session, queue_override):
     err = resp.json()["error"]
     assert err["code"] == case["expect"]["error_code"]
     assert "heart_rate" in {d["field"] for d in err["details"]}
+
+
+def test_unscoreable_update_returns_422(client, db_session, queue_override, api_examples):
+    """Re-score after the patch has nothing to fire on -> 422 unscoreable.
+
+    The patch clears the 5 scoreable vitals but sends temperature (non-scoreable)
+    so it passes the "at least one field" validator; with the complaint rule
+    deactivated, the re-score fires nothing. Config-toggle path: flip is_active
+    off, restore in finally. This case lives in api_contract_examples.json (the
+    contract), not update_test_cases.json.
+    """
+    case = api_examples["PATCH /intakes/{id}"]["unscoreable_422"]
+    (rule_id,) = case["setup"]["deactivate_rules"]
+    complaint = case["setup"]["seeded_intake_complaint"]
+
+    # Seed an intake whose complaint matches the rule we disable (_seed hardcodes
+    # "cardiac", so build it inline with the case's complaint).
+    patient = Patient(name="Unscoreable Update", date_of_birth=date(1980, 5, 17), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint=complaint)
+    db_session.add(intake)
+    db_session.commit()
+
+    db_session.execute(
+        update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=False)
+    )
+    db_session.commit()
+    try:
+        resp = client.patch(f"/intakes/{intake.intake_id}", json=case["request"]["body"])
+        assert resp.status_code == 422
+        err = resp.json()["error"]
+        assert err["code"] == "unscoreable"
+        assert err["message"] == case["response"]["body"]["error"]["message"]
+    finally:
+        db_session.execute(
+            update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=True)
+        )
+        db_session.commit()

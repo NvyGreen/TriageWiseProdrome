@@ -69,7 +69,7 @@ def test_partial_update_changes_only_sent_fields(db_session, queue):
         heart_rate=100, pain_level=4, respiration_rate=18,
     )
 
-    TriageService.updatePatient(intake_id, IntakeUpdate(pain_level=8), queue, db_session)
+    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8), queue)
     db_session.commit()
 
     intake = db_session.get(IntakeRecord, intake_id)
@@ -83,7 +83,7 @@ def test_case_update_records_only_sent_vitals(db_session, queue):
         db_session, "Case Update Row", heart_rate=100, pain_level=4,
     )
 
-    TriageService.updatePatient(intake_id, IntakeUpdate(pain_level=8), queue, db_session)
+    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8), queue)
     db_session.commit()
 
     rows = _case_updates(db_session, intake_id)
@@ -95,7 +95,7 @@ def test_case_update_records_only_sent_vitals(db_session, queue):
 def test_clinical_update_fires_case_updated_event(db_session, queue):
     _, intake_id = _seed(db_session, "Event Patient", heart_rate=100)
 
-    TriageService.updatePatient(intake_id, IntakeUpdate(heart_rate=120), queue, db_session)
+    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(heart_rate=120), queue)
     db_session.commit()
 
     assert len(_events(db_session, intake_id, EventType.CASE_UPDATED)) == 1
@@ -117,8 +117,8 @@ def test_unchanged_values_write_nothing(db_session, queue):
     """Values identical to what's stored are a no-op, not an update."""
     _, intake_id = _seed(db_session, "Same Values", heart_rate=100, pain_level=4)
 
-    TriageService.updatePatient(
-        intake_id, IntakeUpdate(heart_rate=100, pain_level=4), queue, db_session
+    TriageService(db_session).updatePatient(
+        intake_id, IntakeUpdate(heart_rate=100, pain_level=4), queue
     )
     db_session.commit()
 
@@ -135,8 +135,8 @@ def test_disposition_removes_from_queue(db_session, queue):
     queue.insert(2, 3, "10:01", target, TIME_FORMAT)
     queue.insert(3, 3, "10:02", last, TIME_FORMAT)
 
-    TriageService.updatePatient(
-        target, IntakeUpdate(status=Status.DISPOSITIONED), queue, db_session
+    TriageService(db_session).updatePatient(
+        target, IntakeUpdate(status=Status.DISPOSITIONED), queue
     )
     db_session.commit()
 
@@ -148,8 +148,8 @@ def test_status_change_fires_status_changed_event(db_session, queue):
     _, intake_id = _seed(db_session, "Status Patient")
     queue.insert(3, 3, "10:00", intake_id, TIME_FORMAT)
 
-    TriageService.updatePatient(
-        intake_id, IntakeUpdate(status=Status.IN_ROOM), queue, db_session
+    TriageService(db_session).updatePatient(
+        intake_id, IntakeUpdate(status=Status.IN_ROOM), queue
     )
     db_session.commit()
 
@@ -160,8 +160,8 @@ def test_status_change_fires_status_changed_event(db_session, queue):
 
 def test_unknown_intake_clinical_path_raises_404(db_session, queue):
     with pytest.raises(IntakeNotFoundError) as e:
-        TriageService.updatePatient(
-            999_999_999, IntakeUpdate(pain_level=5), queue, db_session
+        TriageService(db_session).updatePatient(
+            999_999_999, IntakeUpdate(pain_level=5), queue
         )
     assert e.value.intake_id == 999_999_999
 
@@ -169,7 +169,7 @@ def test_unknown_intake_clinical_path_raises_404(db_session, queue):
 def test_unknown_intake_status_path_raises_404(db_session, queue):
     """The status path has its own lookup, so it needs its own 404 test."""
     with pytest.raises(IntakeNotFoundError) as e:
-        TriageService.updatePatient(
-            999_999_999, IntakeUpdate(status=Status.IN_ROOM), queue, db_session
+        TriageService(db_session).updatePatient(
+            999_999_999, IntakeUpdate(status=Status.IN_ROOM), queue
         )
     assert e.value.intake_id == 999_999_999

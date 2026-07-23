@@ -44,6 +44,11 @@ TOTAL_VITALS = 5
 logger = logging.getLogger(__name__)
 
 
+class CannotScoreError(Exception):
+    def __init__(self, msg: str):
+        self.msg = msg
+
+
 class ScoringEngine:
     def __init__(self, db: Session):
         try:
@@ -92,7 +97,7 @@ class ScoringEngine:
                     continue
 
                 if rule.min_bound is None and rule.max_bound is None:
-                    raise TypeError(f"{rule.factor} min bound and max bound are both missing")
+                    raise CannotScoreError(f"{rule.factor} min bound and max bound are both missing")
 
                 if rule.min_bound is not None and check_vital >= rule.min_bound:
                     if rule.max_bound is None or check_vital <= rule.max_bound:
@@ -110,12 +115,15 @@ class ScoringEngine:
 
             elif rule.rule_type == "complaint":
                 if intake.chief_complaint is None:
-                    raise TypeError("Chief complaint cannot be missing")
+                    raise CannotScoreError("Chief complaint cannot be missing")
                 if intake.chief_complaint == rule.complaint_group:
                     points += rule.weight
                     # An intake can only ever have one chief complaint, so this will only trigger once
                     resource_level = rule.resource_level
                     incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, intake.chief_complaint, rule.weight))
+                
+        if len(incomplete_drivers) == 0:
+            raise CannotScoreError("The intake is valid but cannot be scored")
         
         initial_esi = ""
         if points >= ESI_1_THRESHOLD:
@@ -160,18 +168,32 @@ class ScoringEngine:
             reason = base_reason + f" -> {esi_level}"
 
         try:
-            new_severity = PatientSeverity(
-                intake_id=intake.intake_id,
-                severity_score=min(points, 100),
-                system_ESI=esi_level,
-                score_reason=reason,
-                fallbacks_applied=fallbacks,
-                confidence=confidence
+            stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake.intake_id)
+            severity = db.scalar(stmt)
+
+            if severity is None:
+                new_severity = PatientSeverity(
+                    intake_id=intake.intake_id,
+                    severity_score=min(points, 100),
+                    system_ESI=esi_level,
+                    score_reason=reason,
+                    fallbacks_applied=fallbacks,
+                    confidence=confidence
+                    # TODO: red_flags
+                    # TODO: red_flags_fired
+                    # TODO: flag_tier
+                )
+                db.add(new_severity)
+            else:
+                severity.severity_score = min(points, 100)
+                severity.system_ESI=esi_level
+                severity.score_reason=reason
+                severity.fallbacks_applied=fallbacks
+                severity.confidence=confidence
                 # TODO: red_flags
                 # TODO: red_flags_fired
                 # TODO: flag_tier
-            )
-            db.add(new_severity)
+
             db.flush()
         except SQLAlchemyError as e:
             db.rollback()
@@ -200,10 +222,10 @@ class ScoringEngine:
                 break
         
         if fallback == "":
-            raise ValueError("Could not find matching rule")
+            raise CannotScoreError("Could not find matching rule")
 
         if "required field" in fallback:
-            raise TypeError(f"{field} cannot be missing")
+            raise CannotScoreError(f"{field} cannot be missing")
 
         fallback_code = ""
         low_confidence = False
@@ -224,7 +246,7 @@ class ScoringEngine:
 
     def refineByResource(self, band: str, resource_level: str):
         if resource_level is None:
-            raise TypeError("resource_level cannot be missing")
+            raise CannotScoreError("resource_level cannot be missing")
 
         if band != ESILevels.ESI_3:
             return False, band

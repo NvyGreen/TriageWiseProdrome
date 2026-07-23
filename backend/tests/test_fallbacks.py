@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
-from app.services.scoring_engine import ScoringEngine
+from app.services.scoring_engine import ScoringEngine, CannotScoreError
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "fallback_test_cases.json").read_text(encoding="utf-8"))["cases"]
@@ -95,5 +95,5 @@ def test_missing_chief_complaint_raises(db_session):
     intake = IntakeRecord(**case["intake"])
     engine = ScoringEngine(db_session)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(CannotScoreError):
         engine.score(intake, db_session)

@@ -169,14 +169,36 @@
       }
     },
     "unscoreable_422": {
-      "_why": "Well-formed body, but nothing can be scored — no chief-complaint mapping or too little data for any rule to fire. 'I read it fine, but it can't be scored.'",
+      "_why": "Body is well-formed and complete, but no scoring rule can fire, so no severity can be produced. 'I read it fine, but it can't be scored.'",
+      "_not_client_triggerable": "Every valid ChiefComplaint maps to a complaint rule with weight >= 1, so a well-formed POST always scores at least 1. This path is only reachable when the matching complaint rule is inactive or absent from scoring_rule. Test setup must deactivate the rule for this complaint (is_active = false) before sending the request; the body below is otherwise valid and would return 201 with the rule on.",
+      "setup": {
+        "deactivate_rules": [
+          13
+        ]
+      },
       "request": {
         "headers": {
           "Idempotency-Key": "req_01H9XYZ_unscore"
         },
         "body": {
+          "name": "Alex Rivera",
+          "date_of_birth": "1979-11-02",
+          "sex": "F",
           "chief_complaint": "general",
-          "symptoms": []
+          "symptoms": [],
+          "heart_rate": 78,
+          "blood_pressure_systolic": 118,
+          "blood_pressure_diastolic": 76,
+          "respiration_rate": 16,
+          "oxygen_saturation": 98,
+          "temperature": 98.4,
+          "pain_level": 2,
+          "pregnancy_status": "none",
+          "pre_existing_conditions": [],
+          "arrival_by_ambulance": false,
+          "recent_ed_visit_72h": false,
+          "injury_related": false,
+          "source": "form"
         }
       },
       "response": {
@@ -184,13 +206,7 @@
         "body": {
           "error": {
             "code": "unscoreable",
-            "message": "The intake is valid but cannot be scored: no rule can fire on the provided data.",
-            "details": [
-              {
-                "field": "vitals",
-                "issue": "no vitals present and complaint has no standalone weight sufficient to score"
-              }
-            ],
+            "message": "The intake is valid but cannot be scored.",
             "request_id": "req_01H9XYZ_unscore"
           }
         }
@@ -418,11 +434,23 @@
       }
     },
     "unscoreable_422": {
-      "_why": "Update leaves the record valid but unscoreable (e.g. clears the only scoreable data).",
+      "_why": "Update is well-formed - at least one vital is present - but after re-scoring no rule can fire, so no severity can be produced.",
+      "_not_client_triggerable": "IntakeUpdate only accepts the 8 vital/pain fields plus status - chief_complaint is not updatable. Clearing every scoreable vital still leaves the complaint rule firing (>= 1 point), and a body with no vitals at all is rejected as 400. So no valid PATCH body can reach this path. It is only reachable when the intake's complaint rule is inactive or absent from scoring_rule. Test setup must deactivate that rule; with the rule on, the body below returns 200.",
+      "setup": {
+        "deactivate_rules": [
+          13
+        ],
+        "seeded_intake_complaint": "general"
+      },
       "request": {
         "path": "/intakes/4021",
         "body": {
-          "chief_complaint": "general"
+          "heart_rate": null,
+          "blood_pressure_systolic": null,
+          "oxygen_saturation": null,
+          "respiration_rate": null,
+          "pain_level": null,
+          "temperature": 98.4
         }
       },
       "response": {
@@ -430,13 +458,7 @@
         "body": {
           "error": {
             "code": "unscoreable",
-            "message": "The update leaves the intake unscoreable: no rule can fire.",
-            "details": [
-              {
-                "field": "chief_complaint",
-                "issue": "no scoreable data remains"
-              }
-            ],
+            "message": "The intake is valid but cannot be scored.",
             "request_id": "req_01H9XYZ_u422"
           }
         }

@@ -18,9 +18,11 @@ from ..schemas.intake_create import IntakeCreate
 from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
 
 from ..services.priority_queue import PriorityQueue
+from ..services.scoring_engine import ScoringEngine, CannotScoreError
 
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
+from ..utils.severity_result import SeverityResult
 from ..utils.dates import age_from_dob
 
 
@@ -44,41 +46,56 @@ class IntakeNotFoundError(Exception):
         self.intake_id = intake_id
 
 
+class UnscoreableException(Exception):
+    pass
+
+
 class TriageService:
-    @staticmethod
-    def submitIntake(intake: IntakeCreate, db: Session) -> Result:
+    def __init__(self, db: Session):
+        self.db = db
+        self.scoringEngine = ScoringEngine(db)
+
+    def submitIntake(self, intake: IntakeCreate) -> Result:
         try:
             new_patient = Patient(
                 name=intake.name,
                 date_of_birth=intake.date_of_birth,
                 sex=intake.sex
             )
-            db.add(new_patient)
-            db.flush()
+            self.db.add(new_patient)
+            self.db.flush()
             patient_id = new_patient.patient_id
         except SQLAlchemyError as e:
-            db.rollback()
+            self.db.rollback()
             logger.exception("Patient creation failed")
             raise HTTPException(status_code=500) from e
 
         missing_fields = [field for field in VITAL_FIELDS if getattr(intake, field) is None]
         try:
             new_intake = IntakeRecord(**intake.model_dump(exclude={"name", "date_of_birth", "sex"}), patient_id=patient_id, missing_fields=missing_fields)
-            db.add(new_intake)
-            db.flush()
-            # TODO: score severity and place record in queue
+            self.db.add(new_intake)
+            self.db.flush()
 
-            new_event = EventLog(event_type=EventType.INTAKE_CREATED, patient_id=patient_id, intake_id=new_intake.intake_id)
-            db.add(new_event)
-            db.flush()
-            return Result(new_intake.intake_id)
+            # TODO: score severity, check red flags, and place record in queue
+            severityResult: SeverityResult = self.scoringEngine.score(new_intake, self.db)
+            score_calculated = EventLog(event_type=EventType.SCORE_CALCULATED, patient_id=patient_id, intake_id=new_intake.intake_id)
+            self.db.add(score_calculated)
+
+            intake_created = EventLog(event_type=EventType.INTAKE_CREATED, patient_id=patient_id, intake_id=new_intake.intake_id)
+            self.db.add(intake_created)
+            self.db.flush()
+            return Result(new_intake.intake_id, severityResult.severity_score)
         except SQLAlchemyError as e:
-            db.rollback()
+            self.db.rollback()
             logger.exception("Intake creation failed")
             raise HTTPException(status_code=500) from e
+        except CannotScoreError:
+            self.db.rollback()
+            logger.exception("The intake is valid but cannot be scored")
+            raise UnscoreableException()
 
-    @staticmethod
-    def getQueue(queue: PriorityQueue, db: Session) -> list[QueueEntry]:
+
+    def getQueue(self, queue: PriorityQueue) -> list[QueueEntry]:
         intake_ids = queue.orderedIntakeIds()
         if not intake_ids:
             return []
@@ -96,7 +113,7 @@ class TriageService:
             .outerjoin(ESIBand, ESIBand.esi_level == effective_esi)
             .where(IntakeRecord.intake_id.in_(intake_ids))
         )
-        rows_by_intake_id = {row.IntakeRecord.intake_id: row for row in db.execute(stmt).all()}
+        rows_by_intake_id = {row.IntakeRecord.intake_id: row for row in self.db.execute(stmt).all()}
 
         entries = []
         # IN doesn't preserve order, so queue order comes from walking intake_ids.
@@ -122,10 +139,9 @@ class TriageService:
         return entries
     
 
-    @staticmethod
-    def updatePatient(intake_id: int, updates: IntakeUpdate, queue: PriorityQueue, db: Session) -> Result:
+    def updatePatient(self, intake_id: int, updates: IntakeUpdate, queue: PriorityQueue) -> Result:
         try:
-            intake = db.get(IntakeRecord, intake_id)
+            intake = self.db.get(IntakeRecord, intake_id)
         except SQLAlchemyError as e:
             logger.exception("Intake retrieval failed")
             raise HTTPException(status_code=500) from e
@@ -136,7 +152,7 @@ class TriageService:
         patient_id = intake.patient_id
         
         if updates.status is not None:            
-            # TODO: Persist status change in triage_queue table            
+            # TODO: Persist status change in triage_queue table
             if updates.status == Status.DISPOSITIONED:
                 try:
                     queue.remove(intake_id)
@@ -148,18 +164,18 @@ class TriageService:
             
             try:
                 new_event = EventLog(event_type=EventType.STATUS_CHANGED, patient_id=patient_id, intake_id=intake_id)
-                db.add(new_event)
-                db.flush()
+                self.db.add(new_event)
+                self.db.flush()
                 return Result(intake_id)
             except SQLAlchemyError as e:
-                db.rollback()
+                self.db.rollback()
                 logger.exception("Event logging failed")
                 raise HTTPException(status_code=500) from e
         
 
         try:
-            dia = updates.blood_pressure_diastolic if updates.blood_pressure_diastolic is not None else intake.blood_pressure_diastolic
-            syst = updates.blood_pressure_systolic if updates.blood_pressure_systolic is not None else intake.blood_pressure_systolic
+            dia = updates.blood_pressure_diastolic if 'blood_pressure_diastolic' in updates.model_fields_set else intake.blood_pressure_diastolic
+            syst = updates.blood_pressure_systolic if 'blood_pressure_systolic' in updates.model_fields_set else intake.blood_pressure_systolic
             if dia is not None and syst is not None and dia >= syst:
                 logger.error("Diastolic must be lower than systolic")
                 raise RequestValidationError(
@@ -174,25 +190,41 @@ class TriageService:
             
             updated_vitals = {}
             for field in VITAL_FIELDS:
+                # Only fields the client actually sent — model_fields_set lets an
+                # explicit null clear a vital, which `is not None` would swallow.
+                if field not in updates.model_fields_set:
+                    continue
                 new_value = getattr(updates, field)
-                if new_value is not None and _norm(new_value) != _norm(getattr(intake, field)):
+                if _norm(new_value) != _norm(getattr(intake, field)):
                     setattr(intake, field, new_value)
                     updated_vitals[field] = new_value
-            
-            # TODO: Once scoring is implemented, re-score based on these values
 
             if updated_vitals:
+                # TODO: Once scoring is implemented, re-score and re-queue based on these values
+                severityResult: SeverityResult = self.scoringEngine.score(intake, self.db)
+                severity_score = severityResult.severity_score
+                score_calculated = EventLog(event_type=EventType.SCORE_CALCULATED, patient_id=patient_id, intake_id=intake_id)
+                self.db.add(score_calculated)
+
                 case_update = CaseUpdate(patient_id=patient_id, intake_id=intake_id, updated_vitals=updated_vitals)
                 new_event = EventLog(event_type=EventType.CASE_UPDATED, patient_id=patient_id, intake_id=intake_id)
-                db.add(case_update)
-                db.add(new_event)
+                self.db.add(case_update)
+                self.db.add(new_event)
+            else:
+                stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
+                severity = self.db.scalar(stmt)
+                severity_score = severity.severity_score if severity is not None else None
             
-            db.flush()
-            return Result(intake_id)
+            self.db.flush()
+            return Result(intake_id, severity_score)
         except SQLAlchemyError as e:
-            db.rollback()
+            self.db.rollback()
             logger.exception("Vitals update failed")
             raise HTTPException(status_code=500) from e
+        except CannotScoreError:
+            self.db.rollback()
+            logger.exception("The intake is valid but cannot be scored")
+            raise UnscoreableException()
     
 
 

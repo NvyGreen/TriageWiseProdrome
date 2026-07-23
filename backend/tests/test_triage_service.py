@@ -39,7 +39,7 @@ def _make_intake(db_session, name, dob=date(1980, 5, 17)):
 
 
 def test_empty_queue_returns_no_entries(db_session):
-    assert TriageService.getQueue(PriorityQueue(), db_session) == []
+    assert TriageService(db_session).getQueue(PriorityQueue()) == []
 
 
 def test_single_entry_has_patient_details(db_session):
@@ -49,7 +49,7 @@ def test_single_entry_has_patient_details(db_session):
     queue = PriorityQueue()
     queue.insert(3, 3, "10:00", intake.intake_id, TIME_FORMAT)
 
-    entries = TriageService.getQueue(queue, db_session)
+    entries = TriageService(db_session).getQueue(queue)
 
     assert len(entries) == 1
     entry = entries[0]
@@ -72,7 +72,7 @@ def test_entries_follow_queue_order(db_session):
     queue.insert(1, 3, "10:01", second.intake_id, TIME_FORMAT)
     queue.insert(2, 3, "10:02", third.intake_id, TIME_FORMAT)
 
-    entries = TriageService.getQueue(queue, db_session)
+    entries = TriageService(db_session).getQueue(queue)
 
     assert [e.patient_id for e in entries] == [
         second.patient_id,
@@ -89,7 +89,7 @@ def test_no_severity_row_yields_none_fields(db_session):
     queue = PriorityQueue()
     queue.insert(3, 3, "10:00", intake.intake_id, TIME_FORMAT)
 
-    entry = TriageService.getQueue(queue, db_session)[0]
+    entry = TriageService(db_session).getQueue(queue)[0]
     assert entry.esi_level is None
     assert entry.priority_label is None
     assert entry.severity_score is None
@@ -100,5 +100,5 @@ def test_missing_intake_raises_500(db_session):
     queue.insert(3, 3, "10:00", 999_999_999, TIME_FORMAT)  # no such intake row
 
     with pytest.raises(HTTPException) as e:
-        TriageService.getQueue(queue, db_session)
+        TriageService(db_session).getQueue(queue)
     assert e.value.status_code == 500

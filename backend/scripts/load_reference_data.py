@@ -17,6 +17,14 @@ Five reference tables (all standalone lookups, no inter-table FKs):
 
 guideline_snippet is intentionally NOT loaded here — it is Phase-2 / RAG-only.
 
+JSON COLUMNS
+------------
+Some reference columns hold JSON (currently red_flag_rule.trigger_pattern_tree,
+a machine-evaluable condition tree). These are declared in JSON_COLUMNS below and
+are json.loads()'d before insert so the DB receives a real object, not a string.
+The matching plain-text column (trigger_pattern) is kept for humans and is
+display-only — nothing parses it. If the two ever disagree, the tree is truth.
+
 IDEMPOTENT
 ----------
 Reference tables are config-like. This script TRUNCATEs each table (or deletes
@@ -34,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -70,6 +79,14 @@ TABLE_MAP = {
     "condition_reference": "ConditionReference",
 }
 
+# Columns whose CSV cell holds a JSON document to be parsed into a real object
+# before insert (destined for a JSON/JSONB column). Keyed by table name.
+# These are guaranteed non-empty in the seed; a blank or malformed cell will
+# raise at load time — which is intended (fail at seed, not at the bedside).
+JSON_COLUMNS = {
+    "red_flag_rule": {"trigger_pattern_tree"},
+}
+
 
 def _model_for(name: str):
     return {
@@ -92,11 +109,47 @@ def _read_csv(path: Path) -> list[dict]:
         return rows
 
 
+def _parse_json_columns(name: str, rows: list[dict]) -> None:
+    """In-place: json.loads() any JSON-typed columns for this table.
+
+    Runs before model construction so JSON/JSONB columns receive a real object.
+    Fails loudly (with table, row, column context) on a missing or malformed
+    cell — reference JSON is guaranteed present, so a failure here is a seed bug
+    to fix now, not swallow.
+    """
+    json_cols = JSON_COLUMNS.get(name)
+    if not json_cols:
+        return
+    for i, row in enumerate(rows, start=1):
+        for col in json_cols:
+            if col not in row:
+                raise RuntimeError(
+                    f"{name}: expected JSON column '{col}' not found in CSV header."
+                )
+            raw = row[col]
+            if raw is None:
+                raise RuntimeError(
+                    f"{name} row {i}: JSON column '{col}' is empty; expected a "
+                    f"JSON document."
+                )
+            if not isinstance(raw, str):
+                # Already parsed (e.g. validated in main() then re-entered via
+                # load_table()); parsing is idempotent, so skip.
+                continue
+            try:
+                row[col] = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"{name} row {i}: column '{col}' is not valid JSON ({exc})."
+                ) from exc
+
+
 def load_table(session, name: str, rows: list[dict]) -> int:
     """Truncate + bulk-insert one reference table. Returns row count."""
     model = _model_for(name)
     if model is None:
         raise RuntimeError(f"No ORM model wired for '{name}'.")
+    _parse_json_columns(name, rows)
     # idempotent: clear existing reference rows first
     session.query(model).delete()
     objects = [model(**row) for row in rows]
@@ -134,6 +187,11 @@ def main() -> None:
         if not path.exists():
             sys.exit(f"ERROR: missing reference CSV: {path}")
         parsed[name] = _read_csv(path)
+        # Validate any JSON columns up front so --dry-run catches bad trees too.
+        try:
+            _parse_json_columns(name, parsed[name])
+        except RuntimeError as exc:
+            sys.exit(f"ERROR: {exc}")
         print(f"parsed {name}: {len(parsed[name])} rows", file=sys.stderr)
 
     if args.dry_run:

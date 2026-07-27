@@ -1,0 +1,737 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — red-flag layer cases (reqs 1.31, 1.33)",
+    "validates": "RedFlagLayer.check(intake, score) — AND/OR tree evaluation, flag_tier, and the invariant that flags NEVER change the score",
+    "how_to_use": "Each case: build the intake + a SeverityResult (score_in), call check(), assert the fired flag_ids, flag_tier, and that score_out == score_in. Positive AND negative cases per flag prove the AND-logic actually gates.",
+    "invariants": [
+      "Flags never change severity_score or esi_level — score_out must equal score_in in every case.",
+      "flag_tier written to patient_severity = min tier among fired flags (1 beats 2 beats 3); no flag => tier 3.",
+      "A flag fires only when ALL its AND-conditions hold; an OR-group needs only one branch.",
+      "Symptoms / conditions are matched by stable key (fast_positive, heavy_bleeding, ...), never display text."
+    ],
+    "helpers_assumed": {
+      "all_vitals_normal": "no vital scoring rule fired EXCEPT the pain rule (rule 7) — pain is excluded on purpose so flag 3 ('all vitals normal AND pain>=7') can fire. Derived by inspecting the SeverityResult's fired drivers, ignoring the pain driver. NB: despite the name, high pain alone does NOT make this false.",
+      "count_borderline_vitals": "count of HR/RR/SBP/temp in BORDERLINE bands (SpO2 excluded)",
+      "BORDERLINE": "HR 90-99, RR 21-24, SBP 90-99, temp 99.5-100.3F",
+      "SHOCK": "HR>=100 AND SBP<=100"
+    },
+    "score_in_note": "score_in is the SeverityResult the engine already produced; only the fields the red-flag layer reads (esi_level, severity_score, drivers→all_vitals_normal) matter. Vitals for all_vitals_normal are carried on the intake."
+  },
+  "cases": [
+    {
+      "_name": "flag1_positive_elderly_vague_normal",
+      "_why": "age>=65 + all vitals normal + vague complaint → occult-risk Tier 2.",
+      "intake": {
+        "date_of_birth": "1955-04-10",
+        "chief_complaint": "general",
+        "heart_rate": 78,
+        "blood_pressure_systolic": 122,
+        "respiration_rate": 16,
+        "temperature": 98.4,
+        "oxygen_saturation": 98,
+        "pain_level": 1,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          1
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag1_negative_under_65",
+      "_why": "Same vague + normal picture but age 50 → age condition fails, no fire.",
+      "intake": {
+        "date_of_birth": "1975-04-10",
+        "chief_complaint": "general",
+        "heart_rate": 78,
+        "blood_pressure_systolic": 122,
+        "respiration_rate": 16,
+        "temperature": 98.4,
+        "oxygen_saturation": 98,
+        "pain_level": 1,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag1_negative_specific_complaint",
+      "_why": "Elderly + normal vitals but complaint is cardiac (not vague) → complaint-in fails.",
+      "intake": {
+        "date_of_birth": "1950-01-01",
+        "chief_complaint": "cardiac",
+        "heart_rate": 78,
+        "blood_pressure_systolic": 122,
+        "respiration_rate": 16,
+        "temperature": 98.4,
+        "oxygen_saturation": 98,
+        "pain_level": 1,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 6,
+        "esi_level": 2,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag2_positive_two_borderline",
+      "_why": "HR 94 and RR 22 both borderline → count>=2 fires.",
+      "intake": {
+        "date_of_birth": "1980-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 94,
+        "blood_pressure_systolic": 122,
+        "respiration_rate": 22,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 2,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          2
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag2_negative_only_one_borderline",
+      "_why": "Only HR 94 borderline (RR normal) → count=1, does not fire.",
+      "intake": {
+        "date_of_birth": "1980-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 94,
+        "blood_pressure_systolic": 122,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 2,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag3_positive_pain_normal_vitals_cardiac",
+      "_why": "All vitals normal + pain 8 + cardiac complaint → do-not-under-triage.",
+      "intake": {
+        "date_of_birth": "1970-01-01",
+        "chief_complaint": "cardiac",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 124,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 8,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 6,
+        "esi_level": 2,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          3
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag3_positive_via_symptom_branch",
+      "_why": "OR branch: complaint is general but chest_pain symptom present → still fires.",
+      "intake": {
+        "date_of_birth": "1970-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 124,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 9,
+        "symptoms": [
+          "chest_pain"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          3
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag3_negative_pain_below_threshold",
+      "_why": "Cardiac + normal vitals but pain 6 → pain>=7 fails.",
+      "intake": {
+        "date_of_birth": "1970-01-01",
+        "chief_complaint": "cardiac",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 124,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 6,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 6,
+        "esi_level": 2,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag3_negative_vitals_not_normal",
+      "_why": "Cardiac + pain 8 but HR 124 fired a scoring rule → all_vitals_normal false → flag 3's first condition fails, no fire.",
+      "intake": {
+        "date_of_birth": "1970-01-01",
+        "chief_complaint": "cardiac",
+        "heart_rate": 124,
+        "blood_pressure_systolic": 124,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 8,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 10,
+        "esi_level": 1,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "all_vitals_normal_excludes_pain",
+      "_why": "Isolates the pain exclusion: pain 9 fires the pain scoring rule, but every other vital is clean and the complaint is minor (not cardiac/abdominal), so no flag fires. all_vitals_normal must be TRUE despite pain 9 — proving pain is excluded from the helper. If someone makes the helper count pain, this case flips and catches it.",
+      "intake": {
+        "date_of_birth": "1985-01-01",
+        "chief_complaint": "minor_general",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 120,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 9,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 2,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag4_positive_diabetic_malaise",
+      "_why": "diabetes + vague_malaise symptom → fires.",
+      "intake": {
+        "date_of_birth": "1968-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 82,
+        "blood_pressure_systolic": 126,
+        "respiration_rate": 17,
+        "temperature": 98.7,
+        "oxygen_saturation": 97,
+        "pain_level": 3,
+        "pre_existing_conditions": [
+          "diabetes"
+        ],
+        "symptoms": [
+          "vague_malaise"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          4
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag4_negative_not_diabetic",
+      "_why": "altered_behaviour present but no diabetes → AND fails.",
+      "intake": {
+        "date_of_birth": "1968-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 82,
+        "blood_pressure_systolic": 126,
+        "respiration_rate": 17,
+        "temperature": 98.7,
+        "oxygen_saturation": 97,
+        "pain_level": 3,
+        "pre_existing_conditions": [],
+        "symptoms": [
+          "altered_behaviour"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag5_positive_stroke_complaint",
+      "_why": "chief_complaint stroke → Tier 1, regardless of vitals.",
+      "intake": {
+        "date_of_birth": "1960-01-01",
+        "chief_complaint": "stroke",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 130,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 2,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 6,
+        "esi_level": 2,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          5
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag5_positive_fast_only",
+      "_why": "OR branch: complaint general, fast_positive symptom present → flag 5 fires Tier 1. (Age 40 so flag 1 does not also fire.)",
+      "intake": {
+        "date_of_birth": "1985-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 130,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 2,
+        "symptoms": [
+          "fast_positive"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          5
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag6_positive_preeclampsia",
+      "_why": "pregnant + headache symptom + SBP 145 → maternal Tier 2.",
+      "intake": {
+        "date_of_birth": "1994-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 88,
+        "blood_pressure_systolic": 145,
+        "respiration_rate": 17,
+        "temperature": 98.8,
+        "oxygen_saturation": 98,
+        "pain_level": 4,
+        "pregnancy_status": "pregnant",
+        "symptoms": [
+          "headache"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          6
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag6_negative_bp_below_140",
+      "_why": "Pregnant + headache but SBP 132 → BP condition fails.",
+      "intake": {
+        "date_of_birth": "1994-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 88,
+        "blood_pressure_systolic": 132,
+        "respiration_rate": 17,
+        "temperature": 98.8,
+        "oxygen_saturation": 98,
+        "pain_level": 4,
+        "pregnancy_status": "pregnant",
+        "symptoms": [
+          "headache"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag7_positive_postpartum_bleeding",
+      "_why": "postpartum + heavy_bleeding symptom → fires via OR symptom branch.",
+      "intake": {
+        "date_of_birth": "1992-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 96,
+        "blood_pressure_systolic": 118,
+        "respiration_rate": 18,
+        "temperature": 98.9,
+        "oxygen_saturation": 97,
+        "pain_level": 5,
+        "pregnancy_status": "postpartum",
+        "symptoms": [
+          "heavy_bleeding"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          7
+        ],
+        "flag_tier": 2,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag7_negative_not_postpartum",
+      "_why": "heavy_bleeding present but pregnancy_status none → AND fails.",
+      "intake": {
+        "date_of_birth": "1992-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 96,
+        "blood_pressure_systolic": 118,
+        "respiration_rate": 18,
+        "temperature": 98.9,
+        "oxygen_saturation": 97,
+        "pain_level": 5,
+        "pregnancy_status": "none",
+        "symptoms": [
+          "heavy_bleeding"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag8_positive_febrile_neonate",
+      "_why": "age 30 days + temp 100.6F → Tier 1 febrile infant.",
+      "_dob_note": "dob is recomputed by the test as today minus _dob_days_ago; a literal date would age out of flag 8's neonate window and stop firing.",
+      "intake": {
+        "_dob_days_ago": 30,
+        "chief_complaint": "general",
+        "heart_rate": 140,
+        "blood_pressure_systolic": 80,
+        "respiration_rate": 40,
+        "temperature": 100.6,
+        "oxygen_saturation": 98,
+        "pain_level": 0,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [
+          8,
+          9
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      },
+      "_finding": "DESIGN GAP: normal neonatal vitals (HR ~140, SBP ~80) trip flag 9's ADULT shock thresholds (HR>=100, SBP<=100). Flag 8 and flag 9 collide for infants. Either age-gate flag 9 (adults only) or use age-specific shock thresholds. Until then, a febrile neonate fires BOTH — tier is 1 either way so triage is unharmed, but the flag_9 banner is clinically wrong for a baby."
+    },
+    {
+      "_name": "flag8_negative_too_old",
+      "_why": "Age ~6 months (>60 days) → flag 8 age window fails. Vitals kept out of adult shock range so flag 9 does not fire either → no flags.",
+      "intake": {
+        "date_of_birth": "2025-01-26",
+        "chief_complaint": "general",
+        "heart_rate": 110,
+        "blood_pressure_systolic": 105,
+        "respiration_rate": 30,
+        "temperature": 100.8,
+        "oxygen_saturation": 98,
+        "pain_level": 0,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag9_positive_shock",
+      "_why": "HR 112 + SBP 96 → early-shock Tier 1. RR kept normal so only flag 9 fires (isolates the shock combo).",
+      "intake": {
+        "date_of_birth": "1985-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 112,
+        "blood_pressure_systolic": 96,
+        "respiration_rate": 18,
+        "temperature": 99.0,
+        "oxygen_saturation": 96,
+        "pain_level": 4,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          9
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      },
+      "_finding": "NOTE: SBP in the shock range (<=100) also falls in the BORDERLINE SBP band (90-99), so a shock patient with one more borderline vital will ALSO fire flag 2. Flags 2 and 9 are not independent. Acceptable (both true), but worth knowing when reading fired-flag lists."
+    },
+    {
+      "_name": "flag9_negative_bp_not_low",
+      "_why": "HR 112 but SBP 118 → shock combo fails (only tachycardic).",
+      "intake": {
+        "date_of_birth": "1985-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 112,
+        "blood_pressure_systolic": 118,
+        "respiration_rate": 18,
+        "temperature": 99.0,
+        "oxygen_saturation": 98,
+        "pain_level": 4,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 2,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag10_positive_neutropenic_fever",
+      "_why": "immunocompromised + temp 100.9F → Tier 1.",
+      "intake": {
+        "date_of_birth": "1972-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 92,
+        "blood_pressure_systolic": 120,
+        "respiration_rate": 18,
+        "temperature": 100.9,
+        "oxygen_saturation": 97,
+        "pain_level": 3,
+        "pre_existing_conditions": [
+          "immunocompromised"
+        ],
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          10
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "flag11_positive_sickle_fever",
+      "_why": "sickle_cell + fever symptom → acute chest syndrome risk, Tier 1.",
+      "intake": {
+        "date_of_birth": "1998-01-01",
+        "chief_complaint": "general",
+        "heart_rate": 95,
+        "blood_pressure_systolic": 118,
+        "respiration_rate": 20,
+        "temperature": 101.2,
+        "oxygen_saturation": 96,
+        "pain_level": 6,
+        "pre_existing_conditions": [
+          "sickle_cell"
+        ],
+        "symptoms": [
+          "fever"
+        ]
+      },
+      "score_in": {
+        "severity_score": 1,
+        "esi_level": 4,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          11
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "multi_flag_tier_is_min",
+      "_why": "Stroke complaint (flag 5, tier 1) fires; HR 94 + SBP 96 = 2 borderline vitals (flag 2, tier 2) fires. flag_tier must be MIN = 1. (HR 94 < 100 so flag 9 does NOT fire.)",
+      "intake": {
+        "date_of_birth": "1960-01-01",
+        "chief_complaint": "stroke",
+        "heart_rate": 94,
+        "blood_pressure_systolic": 96,
+        "respiration_rate": 18,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 2,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 6,
+        "esi_level": 2,
+        "all_vitals_normal": false
+      },
+      "expect": {
+        "fired": [
+          2,
+          5
+        ],
+        "flag_tier": 1,
+        "score_unchanged": true
+      }
+    },
+    {
+      "_name": "no_flags_clean_intake",
+      "_why": "Healthy-looking specific complaint, nothing borderline → no flags, tier 3.",
+      "intake": {
+        "date_of_birth": "1985-01-01",
+        "chief_complaint": "respiratory",
+        "heart_rate": 80,
+        "blood_pressure_systolic": 120,
+        "respiration_rate": 16,
+        "temperature": 98.6,
+        "oxygen_saturation": 98,
+        "pain_level": 2,
+        "symptoms": []
+      },
+      "score_in": {
+        "severity_score": 4,
+        "esi_level": 3,
+        "all_vitals_normal": true
+      },
+      "expect": {
+        "fired": [],
+        "flag_tier": 3,
+        "score_unchanged": true
+      }
+    }
+  ]
+}

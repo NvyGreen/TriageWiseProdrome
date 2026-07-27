@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from app.dependencies import Base
 
 class RedFlagRule(Base):
@@ -6,6 +7,7 @@ class RedFlagRule(Base):
     
     flag_id = Column(Integer, primary_key=True, autoincrement=False)
     trigger_pattern = Column(String(200), nullable=False)
+    trigger_pattern_tree = Column(JSONB, nullable=False, server_default="{}")
     flag_type = Column(String(20), nullable=False)
     flag_tier = Column(Integer, nullable=False)
     message = Column(String(160), nullable=False)

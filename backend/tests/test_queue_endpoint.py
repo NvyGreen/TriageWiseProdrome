@@ -14,7 +14,7 @@ Note the override goes on `queue_app`, NOT `app`. dependency_overrides is
 per-app-instance and this route is registered on the mounted sub-app; putting it
 on the root app is silently ignored.
 """
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -26,7 +26,9 @@ from app.models.patient_severity import PatientSeverity
 from app.services.priority_queue import PriorityQueue
 from app.utils.dates import age_in_years
 
-TIME_FORMAT = "%H:%M"
+def _at(hhmm: str) -> datetime:
+    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
+    return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -80,9 +82,9 @@ def test_entries_follow_queue_order(client, db_session, queue_override):
     second_pid, second_iid = _seed(db_session, "Band Two")
 
     # Insert in an order that does NOT match the expected output.
-    queue_override.insert(3, 3, "10:00", third_iid, TIME_FORMAT)
-    queue_override.insert(1, 3, "10:01", first_iid, TIME_FORMAT)
-    queue_override.insert(2, 3, "10:02", second_iid, TIME_FORMAT)
+    queue_override.insert(3, 3, _at("10:00"), third_iid)
+    queue_override.insert(1, 3, _at("10:01"), first_iid)
+    queue_override.insert(2, 3, _at("10:02"), second_iid)
 
     entries = _entries(client)
     assert [e["patient_id"] for e in entries] == [first_pid, second_pid, third_pid]
@@ -92,7 +94,7 @@ def test_entries_follow_queue_order(client, db_session, queue_override):
 def test_entry_includes_patient_details(client, db_session, queue_override):
     dob = date(1975, 3, 14)
     patient_id, intake_id = _seed(db_session, "Detail Patient", dob=dob)
-    queue_override.insert(3, 3, "10:00", intake_id, TIME_FORMAT)
+    queue_override.insert(3, 3, _at("10:00"), intake_id)
 
     entry = _entries(client)[0]
     assert entry["patient_id"] == patient_id
@@ -104,7 +106,7 @@ def test_entry_includes_patient_details(client, db_session, queue_override):
 def test_severity_fields_populated_when_severity_row_exists(client, db_session, queue_override):
     """esi_level must match the esi_band reference values ("ESI-2", not 2)."""
     _, intake_id = _seed(db_session, "Scored Patient", system_esi="ESI-2", severity_score=6)
-    queue_override.insert(2, 3, "10:00", intake_id, TIME_FORMAT)
+    queue_override.insert(2, 3, _at("10:00"), intake_id)
 
     entry = _entries(client)[0]
     assert entry["esi_level"] == "ESI-2"
@@ -118,7 +120,7 @@ def test_clinician_esi_takes_precedence(client, db_session, queue_override):
         db_session, "Overridden Patient",
         system_esi="ESI-4", clinician_esi="ESI-1", severity_score=3,
     )
-    queue_override.insert(1, 3, "10:00", intake_id, TIME_FORMAT)
+    queue_override.insert(1, 3, _at("10:00"), intake_id)
 
     entry = _entries(client)[0]
     assert entry["esi_level"] == "ESI-1"
@@ -127,7 +129,7 @@ def test_clinician_esi_takes_precedence(client, db_session, queue_override):
 
 def test_unknown_intake_returns_500(client, queue_override):
     """Queue references an intake_id with no DB row -> 500 in the error envelope."""
-    queue_override.insert(3, 3, "10:00", 999_999_999, TIME_FORMAT)
+    queue_override.insert(3, 3, _at("10:00"), 999_999_999)
 
     resp = client.get("/queue/")
     assert resp.status_code == 500

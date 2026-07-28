@@ -15,3 +15,5 @@ class Rule:
     resource_level: str | None = None
     esi_anchor: str | None = None
     fallback_if_missing: str | None = None
+    scoring_action: str | None = None
+    confidence_effect: str | None = None

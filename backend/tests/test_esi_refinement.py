@@ -20,6 +20,7 @@ from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
 from app.services.scoring_engine import ScoringEngine, CannotScoreError
+from app.services.red_flag_layer import RedFlagLayer
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "esi_refinement_test_cases.json").read_text(encoding="utf-8"))["cases"]
@@ -44,7 +45,7 @@ def _seed_intake(db_session, intake_fields):
 @pytest.mark.parametrize("case", STANDARD, ids=lambda c: c["_name"])
 def test_refinement(case, db_session):
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, db_session)
+    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]
@@ -74,7 +75,7 @@ def test_no_complaint_rule_fires_raises(db_session):
         intake = _seed_intake(db_session, case["intake"])
 
         with pytest.raises(CannotScoreError):
-            engine.score(intake, db_session)
+            engine.score(intake, RedFlagLayer(db_session), db_session)
         db_session.rollback()
 
         # no_score_produced: nothing was persisted for this intake.

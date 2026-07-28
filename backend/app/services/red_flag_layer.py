@@ -15,6 +15,7 @@ from ..utils.trigger import Trigger
 from ..utils.severity_result import SeverityResult
 from ..utils.driver import Driver
 from ..utils.dates import age_in_years, age_in_days
+from ..utils.vitals import VITAL_MAP
 
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,10 @@ BORDERLINE = {
     "temperature": (99.5, 100.3)
 }
 
-VITAL_SET = {"SpO2", "Heart rate", "Respiratory rate", "Systolic BP"}
+VITAL_SET = set(VITAL_MAP.keys())
+VITAL_SET.discard("Pain score")
+
+ALLOWED_FIELDS = {c.name for c in IntakeRecord.__table__.columns}
 
 
 def _between(value: int | float, thresholds: list[int | float]) -> bool:
@@ -251,11 +255,11 @@ class RedFlagLayer:
             logger.error(f"Operator {field_info["cmp"]} not recognized")
             raise HTTPException(status_code=500)
 
-        try:
-            field = getattr(intake, field_info["field"])
-        except AttributeError:
+
+        if field_info["field"] not in ALLOWED_FIELDS:
             logger.exception(f"Unknown vital {field_info["field"]}")
             raise HTTPException(status_code=500)
+        field = getattr(intake, field_info["field"])
         
         if field is None:
             return False

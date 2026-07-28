@@ -1,0 +1,390 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — event logging cases (reqs 1.20, 1.20-T)",
+    "validates": "That each triage action writes the correct event_log row(s): right event_type, linked intake_id/patient_id, at the right moment.",
+    "nature": "INTEGRATION, not pure-function. Each case performs an action through TriageService (or the API) and asserts the event_log rows that result. There is no score/return value to check here — the assertion is on the side effect (rows written to event_log).",
+    "how_to_use": "For each case: perform 'action' against a seeded state, then assert that event_log contains exactly the rows in 'expect_events' (matching event_type + that intake_id/patient_id are populated). 'order_matters' notes where sequence is asserted.",
+    "event_types": [
+      "intake_created",
+      "score_calculated",
+      "red_flag_fired",
+      "queued",
+      "reprioritized",
+      "override_applied",
+      "case_updated",
+      "status_changed",
+      "explanation_viewed"
+    ],
+    "conventions": [
+      "event_log has no performed_by (no auth in this system).",
+      "Every row carries event_type + intake_id + patient_id (soft FKs).",
+      "A single action may emit multiple events (e.g. submit → intake_created + score_calculated + queued).",
+      "reprioritized fires ONLY when queue order actually changes (a patient crosses another) — on new arrival, clinical update, or override. A re-score that doesn't move anyone emits no reprioritized event.",
+      "status_changed covers the whole status lifecycle (WAITING/IN_ROOM/DISPOSITIONED) — it replaced a separate 'dispositioned' event."
+    ]
+  },
+  "cases": [
+    {
+      "_name": "submit_intake_logs_created_scored_queued",
+      "_why": "A successful POST /patients is one action that emits several events: the record was created, scored, and placed in the queue.",
+      "action": {
+        "type": "submit_intake",
+        "intake": {
+          "chief_complaint": "cardiac",
+          "heart_rate": 124,
+          "blood_pressure_systolic": 118,
+          "oxygen_saturation": 96,
+          "respiration_rate": 18,
+          "pain_level": 3
+        }
+      },
+      "expect_events": [
+        {
+          "event_type": "intake_created",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "score_calculated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "queued",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "order_matters": false,
+      "_note": "If the queue insert also emits 'reprioritized' on arrival, add it here — depends on whether arrival counts as a reprioritization in your impl."
+    },
+    {
+      "_name": "submit_intake_with_red_flag_logs_flag_fired",
+      "_why": "When a submitted intake trips a red flag, a red_flag_fired event must also be written.",
+      "action": {
+        "type": "submit_intake",
+        "intake": {
+          "chief_complaint": "stroke",
+          "heart_rate": 80,
+          "blood_pressure_systolic": 130,
+          "oxygen_saturation": 98,
+          "respiration_rate": 16,
+          "pain_level": 2,
+          "symptoms": []
+        }
+      },
+      "expect_events": [
+        {
+          "event_type": "intake_created",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "score_calculated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "red_flag_fired",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "queued",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "order_matters": false,
+      "_note": "stroke complaint fires flag 5. Assert red_flag_fired only when at least one flag actually fired."
+    },
+    {
+      "_name": "submit_intake_no_flag_omits_flag_fired",
+      "_why": "Negative case — a clean intake fires no flag, so NO red_flag_fired event should be written.",
+      "action": {
+        "type": "submit_intake",
+        "intake": {
+          "chief_complaint": "respiratory",
+          "heart_rate": 80,
+          "blood_pressure_systolic": 120,
+          "oxygen_saturation": 98,
+          "respiration_rate": 16,
+          "pain_level": 2,
+          "symptoms": []
+        }
+      },
+      "expect_events": [
+        {
+          "event_type": "intake_created",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "score_calculated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "queued",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "expect_absent": [
+        "red_flag_fired"
+      ],
+      "order_matters": false
+    },
+    {
+      "_name": "unscoreable_submit_does_not_log_scored_or_queued",
+      "_why": "If scoring fails (422), the transaction rolls back — no score_calculated or queued event should persist.",
+      "action": {
+        "type": "submit_intake",
+        "setup": {
+          "deactivate_rules": [
+            13
+          ]
+        },
+        "intake": {
+          "chief_complaint": "general",
+          "temperature": 98.4,
+          "heart_rate": null,
+          "blood_pressure_systolic": null,
+          "oxygen_saturation": null,
+          "respiration_rate": null,
+          "pain_level": null
+        }
+      },
+      "expect_result": {
+        "status_code": 422,
+        "error_code": "unscoreable"
+      },
+      "expect_events": [],
+      "expect_absent": [
+        "score_calculated",
+        "queued"
+      ],
+      "order_matters": false,
+      "_note": "Whole action rolls back on CannotScoreError — assert event_log gained NO rows for this intake, including intake_created if it's inside the rolled-back transaction."
+    },
+    {
+      "_name": "clinical_update_logs_case_updated_and_scored",
+      "_why": "A PATCH that changes vitals re-scores AND moves the patient past another in the queue → case_updated + score_calculated + reprioritized. A filler patient is seeded ahead of the target so the update produces a real order change (reprioritized fires only on actual movement).",
+      "action": {
+        "type": "update_intake",
+        "intake_id": 4021,
+        "patch": {
+          "oxygen_saturation": 90,
+          "respiration_rate": 26
+        },
+        "note": "SpO2 90 + RR 26 fire two vital rules → target's acuity rises and it crosses the filler"
+      },
+      "expect_events": [
+        {
+          "event_type": "case_updated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "score_calculated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "reprioritized",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "order_matters": false,
+      "_note": "reprioritized fires because queue order actually changed (4021 moved ahead of 9001), matching the 'only on real movement' semantics.",
+      "setup": {
+        "seed_queue": [
+          {
+            "intake_id": 9001,
+            "chief_complaint": "abdominal",
+            "note": "FILLER — sits ahead of target",
+            "expected_esi": 3
+          },
+          {
+            "intake_id": 4021,
+            "chief_complaint": "respiratory",
+            "oxygen_saturation": 98,
+            "heart_rate": 80,
+            "respiration_rate": 16,
+            "blood_pressure_systolic": 120,
+            "pain_level": 2,
+            "note": "TARGET — starts behind filler",
+            "expected_esi": 3
+          }
+        ],
+        "queue_order_before": [
+          9001,
+          4021
+        ]
+      },
+      "expect_queue_order_after": [
+        4021,
+        9001
+      ]
+    },
+    {
+      "_name": "clinical_update_no_movement_omits_reprioritized",
+      "_why": "A clinical update on the ONLY patient in the queue re-scores but cannot change relative order, so reprioritized must NOT fire. case_updated + score_calculated still do.",
+      "setup": {
+        "seed_queue": [
+          {
+            "intake_id": 4055,
+            "chief_complaint": "respiratory",
+            "oxygen_saturation": 98,
+            "heart_rate": 80,
+            "respiration_rate": 16,
+            "blood_pressure_systolic": 120,
+            "pain_level": 2
+          }
+        ],
+        "queue_order_before": [
+          4055
+        ]
+      },
+      "action": {
+        "type": "update_intake",
+        "intake_id": 4055,
+        "patch": {
+          "heart_rate": 110
+        },
+        "note": "HR 110 changes the score but there's no one to cross → order unchanged"
+      },
+      "expect_events": [
+        {
+          "event_type": "case_updated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "score_calculated",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "expect_absent": [
+        "reprioritized"
+      ],
+      "expect_queue_order_after": [
+        4055
+      ],
+      "order_matters": false
+    },
+    {
+      "_name": "status_only_update_logs_status_changed_only",
+      "_why": "A status-only PATCH does not re-score → only status_changed, no case_updated / score_calculated.",
+      "action": {
+        "type": "update_intake",
+        "intake_id": 4021,
+        "patch": {
+          "status": "IN_ROOM"
+        }
+      },
+      "expect_events": [
+        {
+          "event_type": "status_changed",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "expect_absent": [
+        "score_calculated",
+        "case_updated",
+        "reprioritized"
+      ],
+      "order_matters": false
+    },
+    {
+      "_name": "disposition_logs_status_changed",
+      "_why": "Setting status DISPOSITIONED removes from queue and logs status_changed (the lifecycle event covers disposition).",
+      "action": {
+        "type": "update_intake",
+        "intake_id": 4021,
+        "patch": {
+          "status": "DISPOSITIONED"
+        }
+      },
+      "expect_events": [
+        {
+          "event_type": "status_changed",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "order_matters": false,
+      "_note": "No separate 'dispositioned' event — status_changed covers it. Queue removal is a side effect, not its own event unless you emit reprioritized for the shift."
+    },
+    {
+      "_name": "override_logs_override_applied_and_reprioritized",
+      "_why": "A clinician override records override_applied and can change ordering → reprioritized.",
+      "action": {
+        "type": "apply_override",
+        "intake_id": 4021,
+        "override": {
+          "system_ESI": "ESI-3",
+          "clinician_ESI": "ESI-2",
+          "reason_code": "clinical_judgment"
+        }
+      },
+      "expect_events": [
+        {
+          "event_type": "override_applied",
+          "has_intake_id": true,
+          "has_patient_id": true
+        },
+        {
+          "event_type": "reprioritized",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "order_matters": false,
+      "_note": "reprioritized only if the override actually changes queue position; if your impl always re-queues on override, it always fires."
+    },
+    {
+      "_name": "view_explanation_logs_explanation_viewed",
+      "_why": "Fetching GET /intakes/{id} explanation logs explanation_viewed.",
+      "action": {
+        "type": "view_explanation",
+        "intake_id": 4021,
+        "mode": "xai"
+      },
+      "expect_events": [
+        {
+          "event_type": "explanation_viewed",
+          "has_intake_id": true,
+          "has_patient_id": true
+        }
+      ],
+      "order_matters": false,
+      "_note": "Confirm whether black-box mode also logs this, or only xai. Adjust if they differ."
+    },
+    {
+      "_name": "every_row_has_event_type_and_ids",
+      "_why": "Structural invariant across all logged rows: event_type non-null, intake_id + patient_id populated, no performed_by column.",
+      "action": {
+        "type": "submit_intake",
+        "intake": {
+          "chief_complaint": "abdominal",
+          "heart_rate": 124,
+          "blood_pressure_systolic": 120,
+          "oxygen_saturation": 97,
+          "respiration_rate": 18,
+          "pain_level": 8
+        }
+      },
+      "expect_invariant": {
+        "all_rows_have_event_type": true,
+        "all_rows_have_intake_id": true,
+        "all_rows_have_patient_id": true,
+        "no_performed_by_column": true
+      },
+      "order_matters": false
+    }
+  ]
+}

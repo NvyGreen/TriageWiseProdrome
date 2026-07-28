@@ -12,7 +12,7 @@ Deferred until scoring exists: populated esi_level / priority_label /
 severity_score, and clinician_ESI taking precedence over system_ESI.
 Not asserted: `status` (hardcoded "WAITING") and `entered_at` (placeholder).
 """
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from fastapi.exceptions import HTTPException
@@ -23,7 +23,10 @@ from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import TriageService
 from app.utils.dates import age_in_years
 
-TIME_FORMAT = "%H:%M"
+
+def _at(hhmm: str) -> datetime:
+    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
+    return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
 
 
 def _make_intake(db_session, name, dob=date(1980, 5, 17)):
@@ -47,7 +50,7 @@ def test_single_entry_has_patient_details(db_session):
     patient, intake = _make_intake(db_session, "Solo Patient", dob=dob)
 
     queue = PriorityQueue()
-    queue.insert(3, 3, "10:00", intake.intake_id, TIME_FORMAT)
+    queue.insert(3, 3, _at("10:00"), intake.intake_id)
 
     entries = TriageService(db_session).getQueue(queue)
 
@@ -68,9 +71,9 @@ def test_entries_follow_queue_order(db_session):
     # Insert in an order that does NOT match the expected output, so the test
     # fails if getQueue returned insertion order instead of queue order.
     queue = PriorityQueue()
-    queue.insert(3, 3, "10:00", first.intake_id, TIME_FORMAT)
-    queue.insert(1, 3, "10:01", second.intake_id, TIME_FORMAT)
-    queue.insert(2, 3, "10:02", third.intake_id, TIME_FORMAT)
+    queue.insert(3, 3, _at("10:00"), first.intake_id)
+    queue.insert(1, 3, _at("10:01"), second.intake_id)
+    queue.insert(2, 3, _at("10:02"), third.intake_id)
 
     entries = TriageService(db_session).getQueue(queue)
 
@@ -87,7 +90,7 @@ def test_no_severity_row_yields_none_fields(db_session):
     _, intake = _make_intake(db_session, "Unscored Patient")
 
     queue = PriorityQueue()
-    queue.insert(3, 3, "10:00", intake.intake_id, TIME_FORMAT)
+    queue.insert(3, 3, _at("10:00"), intake.intake_id)
 
     entry = TriageService(db_session).getQueue(queue)[0]
     assert entry.esi_level is None
@@ -97,7 +100,7 @@ def test_no_severity_row_yields_none_fields(db_session):
 
 def test_missing_intake_raises_500(db_session):
     queue = PriorityQueue()
-    queue.insert(3, 3, "10:00", 999_999_999, TIME_FORMAT)  # no such intake row
+    queue.insert(3, 3, _at("10:00"), 999_999_999)  # no such intake row
 
     with pytest.raises(HTTPException) as e:
         TriageService(db_session).getQueue(queue)

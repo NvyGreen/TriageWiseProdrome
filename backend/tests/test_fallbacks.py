@@ -15,12 +15,15 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from fastapi.exceptions import HTTPException
 from sqlalchemy import select, update
 
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
+from app.models.scoring_rule import ScoringRule
 from app.services.scoring_engine import ScoringEngine, CannotScoreError
+from app.services.red_flag_layer import RedFlagLayer
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "fallback_test_cases.json").read_text(encoding="utf-8"))["cases"]
@@ -49,7 +52,7 @@ def _fallbacks_to_dict(entries):
 @pytest.mark.parametrize("case", STANDARD, ids=lambda c: c["_name"])
 def test_fallback_signals(case, db_session):
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, db_session)
+    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]
@@ -70,7 +73,7 @@ def test_fallback_persisted_on_severity_row(db_session):
     """A fired fallback must be written to patient_severity (non-empty) with LOW confidence."""
     case = BY_NAME["fallback_used_flag_set_on_persist"]
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, db_session)
+    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]
@@ -85,6 +88,38 @@ def test_fallback_persisted_on_severity_row(db_session):
     assert severity.confidence == expect["persisted_confidence"]
 
 
+def test_unrecognized_scoring_action_is_server_error(db_session):
+    """An invalid scoring_action in the rule data is a server config error -> 500,
+    not a 422 unscoreable. Corrupt the Heart rate rules' scoring_action, then score
+    an intake missing heart_rate so applyFallback fires. Restore the rules after.
+    """
+    saved = {
+        r.rule_id: r.scoring_action
+        for r in db_session.scalars(
+            select(ScoringRule).where(ScoringRule.factor == "Heart rate")
+        ).all()
+    }
+    db_session.execute(
+        update(ScoringRule)
+        .where(ScoringRule.factor == "Heart rate")
+        .values(scoring_action="bogus_action")
+    )
+    db_session.commit()
+    try:
+        intake = _seed_intake(db_session, BY_NAME["heart_rate_missing_rule_skipped"]["intake"])
+        with pytest.raises(HTTPException) as e:
+            ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+        assert e.value.status_code == 500
+    finally:
+        for rule_id, action in saved.items():
+            db_session.execute(
+                update(ScoringRule)
+                .where(ScoringRule.rule_id == rule_id)
+                .values(scoring_action=action)
+            )
+        db_session.commit()
+
+
 def test_missing_chief_complaint_raises(db_session):
     """chief_complaint has no fallback — it's required. The engine raises rather
     than score. It's NOT NULL, so the intake can't be persisted; pass a transient
@@ -96,4 +131,4 @@ def test_missing_chief_complaint_raises(db_session):
     engine = ScoringEngine(db_session)
 
     with pytest.raises(CannotScoreError):
-        engine.score(intake, db_session)
+        engine.score(intake, RedFlagLayer(db_session), db_session)

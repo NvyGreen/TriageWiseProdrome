@@ -17,6 +17,7 @@ from ..services.red_flag_layer import RedFlagLayer
 from ..utils.rule import Rule
 from ..utils.driver import Driver
 from ..utils.severity_result import SeverityResult
+from ..utils.vitals import VITAL_MAP
 
 
 ESI_1_THRESHOLD = 8
@@ -24,20 +25,17 @@ ESI_2_THRESHOLD = 6
 ESI_3_THRESHOLD = 3
 ESI_4_THRESHOLD = 1
 
-VITAL_MAP = {
-            "SpO2": "oxygen_saturation",
-            "Heart rate": "heart_rate",
-            "Respiratory rate": "respiration_rate",
-            "Systolic BP": "blood_pressure_systolic",
-            "Pain score": "pain_level"
-        }
-
 class ESILevels(StrEnum):
     ESI_1 = "ESI-1"
     ESI_2 = "ESI-2"
     ESI_3 = "ESI-3"
     ESI_4 = "ESI-4"
     ESI_5 = "ESI-5"
+
+class FallbackCodes(StrEnum):
+    ASSUME_NORMAL = "assume_normal"
+    SKIP_RULE = "skip_rule"
+    ASSUME_ZERO = "assume_zero"
 
 incompleteDriver = namedtuple("incompleteDriver", ["rule_id", "factor", "threshold", "patient_value", "weight"])
 
@@ -74,14 +72,14 @@ class ScoringEngine:
                 raw_rule.complaint_group,
                 raw_rule.resource_level,
                 raw_rule.esi_anchor,
-                raw_rule.fallback_if_missing
+                raw_rule.fallback_if_missing,
+                raw_rule.scoring_action,
+                raw_rule.confidence_effect
             )
             self.rules.append(rule)
-
-        self.red_flag_layer = RedFlagLayer(db)
     
 
-    def score(self, intake: IntakeRecord, db: Session) -> SeverityResult:
+    def score(self, intake: IntakeRecord, red_flag_layer: RedFlagLayer, db: Session) -> SeverityResult:
         points = 0
         resource_level = None
         missing_fields = set()
@@ -182,7 +180,7 @@ class ScoringEngine:
             confidence
         )
 
-        fired_flags = self.red_flag_layer.check(intake, result, db)
+        fired_flags = red_flag_layer.check(intake, result, db)
         red_flags = []
         flag_tier = 3
         for flag in fired_flags:
@@ -228,36 +226,17 @@ class ScoringEngine:
 
         result.flag_tier = flag_tier
         return result
-    
+
 
     def applyFallback(self, field):
-        fallback = ""
         for rule in self.rules:
             if rule.factor == field:
-                fallback = rule.fallback_if_missing
-                break
-        
-        if fallback == "":
-            raise CannotScoreError("Could not find matching rule")
+                if rule.scoring_action not in FallbackCodes:
+                    logger.error(f"{rule.scoring_action} not a recognized fallback")
+                    raise HTTPException(status_code=500)
+                return rule.confidence_effect == "low", rule.scoring_action
 
-        if "required field" in fallback:
-            raise CannotScoreError(f"{field} cannot be missing")
-
-        fallback_code = ""
-        low_confidence = False
-        if "confidence LOW" in fallback:
-            low_confidence = True
-        if "assume normal" in fallback:
-            fallback_code = "assumed_normal"
-        if "assume 0" in fallback:
-            fallback_code = "assumed_zero"
-        if "skip rule" in fallback:
-            fallback_code = "rule_skipped"
-        
-        if fallback_code == "":
-            raise HTTPException(status_code=500)
-        
-        return low_confidence, fallback_code
+        raise CannotScoreError("Could not find matching rule")
     
 
     def refineByResource(self, band: str, resource_level: str):

@@ -1,6 +1,7 @@
 import uuid
 from fastapi import FastAPI, Request, status, Depends
 from fastapi.exceptions import RequestValidationError, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,17 @@ class MedicalDisclaimerResponse(JSONResponse):
 
 
 app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+
+# On the top-level app so it wraps the mounted sub-apps too. Origins come from
+# settings (env-configured per deploy), never "*".
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_allow_origins,
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Content-Type", "Idempotency-Key"],
+    allow_credentials=True,
+)
+
 patients_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 queue_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 intakes_app = FastAPI(default_response_class=MedicalDisclaimerResponse)

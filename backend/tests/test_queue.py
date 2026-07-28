@@ -18,6 +18,7 @@ format/fmt=None path uses datetime.fromisoformat, for the ISO timestamps the API
 will send — but fromisoformat rejects "HH:MM", so tests must pass the format.)
 """
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -30,8 +31,6 @@ CASES = json.loads((UNIT_CASES / "queue_test_cases.json").read_text(encoding="ut
 
 TIME_FORMAT = "%H:%M"
 
-# Both classes share the same insert(...) / orderedIntakeIds() surface (the 5th
-# insert arg is positional — "format" on one, "fmt" on the other).
 QUEUE_CLASSES = [PriorityQueue, NaiveListQueue]
 
 # Standard cases carry a top-level "expected_order"; the sequence case does not.
@@ -40,13 +39,24 @@ SEQUENCE_CASE = next(c for c in CASES["cases"] if "sequence" in c)
 
 
 def _insert(queue, row: dict) -> None:
-    queue.insert(
-        row["esi_band"],
-        row["flag_tier"],
-        row["arrival_time"],
-        row["intake_id"],
-        TIME_FORMAT,
-    )
+    # The two queues' insert signatures have DIVERGED: PriorityQueue now takes a
+    # datetime (4 args); NaiveListQueue still takes a string + format (5 args).
+    # See the note at the top of the module — update NaiveListQueue to converge.
+    if isinstance(queue, PriorityQueue):
+        queue.insert(
+            row["esi_band"],
+            row["flag_tier"],
+            datetime.strptime(row["arrival_time"], TIME_FORMAT).replace(tzinfo=timezone.utc),
+            row["intake_id"],
+        )
+    else:
+        queue.insert(
+            row["esi_band"],
+            row["flag_tier"],
+            row["arrival_time"],
+            row["intake_id"],
+            TIME_FORMAT,
+        )
 
 
 @pytest.mark.parametrize("queue_cls", QUEUE_CLASSES, ids=lambda c: c.__name__)

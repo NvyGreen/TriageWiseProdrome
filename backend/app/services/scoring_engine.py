@@ -12,6 +12,8 @@ from ..models.intake_record import IntakeRecord
 from ..models.scoring_rule import ScoringRule
 from ..models.patient_severity import PatientSeverity
 
+from ..services.red_flag_layer import RedFlagLayer
+
 from ..utils.rule import Rule
 from ..utils.driver import Driver
 from ..utils.severity_result import SeverityResult
@@ -75,6 +77,8 @@ class ScoringEngine:
                 raw_rule.fallback_if_missing
             )
             self.rules.append(rule)
+
+        self.red_flag_layer = RedFlagLayer(db)
     
 
     def score(self, intake: IntakeRecord, db: Session) -> SeverityResult:
@@ -151,8 +155,6 @@ class ScoringEngine:
                 pct
             )
             drivers.append(driver)
-        
-        # TODO: Add red flags fired from RedFlagLayer
 
         completeness_ratio = f"{TOTAL_VITALS - len(missing_fields)} of {TOTAL_VITALS}"
         confidence = "LOW" if low_confidence else "HIGH"
@@ -167,40 +169,7 @@ class ScoringEngine:
         else:
             reason = base_reason + f" -> {esi_level}"
 
-        try:
-            stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake.intake_id)
-            severity = db.scalar(stmt)
-
-            if severity is None:
-                new_severity = PatientSeverity(
-                    intake_id=intake.intake_id,
-                    severity_score=min(points, 100),
-                    system_ESI=esi_level,
-                    score_reason=reason,
-                    fallbacks_applied=fallbacks,
-                    confidence=confidence
-                    # TODO: red_flags
-                    # TODO: red_flags_fired
-                    # TODO: flag_tier
-                )
-                db.add(new_severity)
-            else:
-                severity.severity_score = min(points, 100)
-                severity.system_ESI=esi_level
-                severity.score_reason=reason
-                severity.fallbacks_applied=fallbacks
-                severity.confidence=confidence
-                # TODO: red_flags
-                # TODO: red_flags_fired
-                # TODO: flag_tier
-
-            db.flush()
-        except SQLAlchemyError as e:
-            db.rollback()
-            logger.exception("Patient severity creation failed")
-            raise HTTPException(status_code=500) from e
-
-        return SeverityResult(
+        result = SeverityResult(
             min(points, 100),
             esi_level,
             initial_esi,
@@ -212,6 +181,53 @@ class ScoringEngine:
             fallbacks,
             confidence
         )
+
+        fired_flags = self.red_flag_layer.check(intake, result, db)
+        red_flags = []
+        flag_tier = 3
+        for flag in fired_flags:
+            red_flags.append({
+                "flag_id": flag.flag_id,
+                "message": flag.message,
+                "flag_tier": flag.flag_tier
+            })
+            flag_tier = min(flag_tier, flag.flag_tier)
+
+        try:
+            stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake.intake_id)
+            severity = db.scalar(stmt)
+
+            if severity is None:
+                new_severity = PatientSeverity(
+                    intake_id=intake.intake_id,
+                    severity_score=min(points, 100),
+                    system_ESI=esi_level,
+                    score_reason=reason,
+                    fallbacks_applied=fallbacks,
+                    confidence=confidence,
+                    red_flags=red_flags,
+                    red_flag_fired=len(red_flags) != 0,
+                    flag_tier=flag_tier
+                )
+                db.add(new_severity)
+            else:
+                severity.severity_score = min(points, 100)
+                severity.system_ESI = esi_level
+                severity.score_reason = reason
+                severity.fallbacks_applied = fallbacks
+                severity.confidence = confidence
+                severity.red_flags = red_flags
+                severity.red_flag_fired = len(red_flags) != 0
+                severity.flag_tier = flag_tier
+
+            db.flush()
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.exception("Patient severity creation failed")
+            raise HTTPException(status_code=500) from e
+
+        result.flag_tier = flag_tier
+        return result
     
 
     def applyFallback(self, field):

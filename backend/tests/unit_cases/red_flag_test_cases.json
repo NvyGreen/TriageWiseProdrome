@@ -513,7 +513,7 @@
     {
       "_name": "flag8_positive_febrile_neonate",
       "_why": "age 30 days + temp 100.6F → Tier 1 febrile infant.",
-      "_dob_note": "dob is recomputed by the test as today minus _dob_days_ago; a literal date would age out of flag 8's neonate window and stop firing.",
+      "_dob_note": "dob is recomputed by the test as today minus _dob_days_ago; a literal date would age out of flag 8's 8-60 day window and stop firing.",
       "intake": {
         "_dob_days_ago": 30,
         "chief_complaint": "general",
@@ -532,13 +532,12 @@
       },
       "expect": {
         "fired": [
-          8,
-          9
+          8
         ],
         "flag_tier": 1,
         "score_unchanged": true
       },
-      "_finding": "DESIGN GAP: normal neonatal vitals (HR ~140, SBP ~80) trip flag 9's ADULT shock thresholds (HR>=100, SBP<=100). Flag 8 and flag 9 collide for infants. Either age-gate flag 9 (adults only) or use age-specific shock thresholds. Until then, a febrile neonate fires BOTH — tier is 1 either way so triage is unharmed, but the flag_9 banner is clinically wrong for a baby."
+      "_finding": "RESOLVED: flag 9 now age-gated (age_in_years >= 5), so a febrile neonate fires ONLY flag 8. Previously fired both because flag 9's adult shock thresholds (HR>=100, SBP<=100) matched normal infant vitals."
     },
     {
       "_name": "flag8_negative_too_old",

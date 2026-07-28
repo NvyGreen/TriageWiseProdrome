@@ -28,10 +28,6 @@ BORDERLINE = {
 
 VITAL_SET = {"SpO2", "Heart rate", "Respiratory rate", "Systolic BP"}
 
-class MalformedRuleError(Exception):
-    def __init__(self, msg: str):
-        self.msg = msg
-
 
 def _between(value: int | float, thresholds: list[int | float]) -> bool:
     if not isinstance(thresholds, list):
@@ -107,7 +103,7 @@ class RedFlagLayer:
             if pattern_tree.get("op"):
                 if not pattern_tree.get("conditions"):
                     logger.error("Expected conditions")
-                    raise MalformedRuleError("Expected conditions")
+                    raise HTTPException(status_code=500)
                 
                 if pattern_tree["op"] == "AND":
                     triggered = self._parse_and(pattern_tree["conditions"], intake, score, db)
@@ -115,14 +111,14 @@ class RedFlagLayer:
                     triggered = self._parse_or(pattern_tree["conditions"], intake, score, db)
                 else:
                     logger.error(f"Unrecognized format: {pattern_tree}")
-                    raise MalformedRuleError(f"Unrecognized format: {pattern_tree}")
+                    raise HTTPException(status_code=500)
             elif pattern_tree.get("helper"):
                 triggered = self._parse_helper(pattern_tree, intake, score, db)
             elif pattern_tree.get("field"):
                 triggered = self._parse_field(pattern_tree, intake)
             else:
                 logger.error(f"Unrecognized format: {pattern_tree}")
-                raise MalformedRuleError(f"Unrecognized format: {pattern_tree}")
+                raise HTTPException(status_code=500)
 
             if triggered:
                 fired_flags.append(trigger)
@@ -133,13 +129,14 @@ class RedFlagLayer:
     def _parse_and(self, conditions: list[dict], intake: IntakeRecord, score: SeverityResult, db: Session) -> bool:
         status = True
         if len(conditions) == 0:
-            raise MalformedRuleError("Field conditions empty")
+            logger.error("Coniditions empty")
+            raise HTTPException(status_code=500)
         
         for condition in conditions:
             if condition.get("op"):
                 if not condition.get("conditions"):
                     logger.error("Expected conditions")
-                    raise MalformedRuleError("Expected conditions")
+                    raise HTTPException(status_code=500)
                 
                 if condition["op"] == "OR":
                     status = status and self._parse_or(condition["conditions"], intake, score, db)
@@ -147,14 +144,14 @@ class RedFlagLayer:
                     status = status and self._parse_and(condition["conditions"], intake, score, db)
                 else:
                     logger.error(f"Unrecognized format: {condition}")
-                    raise MalformedRuleError(f"Unrecognized format: {condition}")
+                    raise HTTPException(status_code=500)
             elif condition.get("helper"):
                 status = status and self._parse_helper(condition, intake, score, db)
             elif condition.get("field"):
                 status = status and self._parse_field(condition, intake)
             else:
                 logger.error(f"Unrecognized format: {condition}")
-                raise MalformedRuleError(f"Unrecognized format: {condition}")
+                raise HTTPException(status_code=500)
 
             if status is False:
                 return status
@@ -165,13 +162,13 @@ class RedFlagLayer:
     def _parse_or(self, conditions: list[dict], intake: IntakeRecord, score: SeverityResult, db: Session) -> bool:
         status = False
         if len(conditions) == 0:
-            raise MalformedRuleError("Field conditions empty")
+            raise HTTPException(status_code=500)
         
         for condition in conditions:
             if condition.get("op"):
                 if not condition.get("conditions"):
                     logger.error("Expected conditions")
-                    raise MalformedRuleError("Expected conditions")
+                    raise HTTPException(status_code=500)
                 
                 if condition["op"] == "AND":
                     status = status or self._parse_and(condition["conditions"], intake, score, db)
@@ -179,14 +176,14 @@ class RedFlagLayer:
                     status = status or self._parse_or(condition["conditions"], intake, score, db)
                 else:
                     logger.error(f"Unrecognized format: {condition}")
-                    raise MalformedRuleError(f"Unrecognized format: {condition}")
+                    raise HTTPException(status_code=500)
             elif condition.get("helper"):
                 status = status or self._parse_helper(condition, intake, score, db)
             elif condition.get("field"):
                 status = status or self._parse_field(condition, intake)
             else:
                 logger.error(f"Unrecognized format: {condition}")
-                raise MalformedRuleError(f"Unrecognized format: {condition}")
+                raise HTTPException(status_code=500)
 
             if status is True:
                 return status
@@ -198,11 +195,11 @@ class RedFlagLayer:
         """Validate that a comparison helper has a usable cmp + value."""
         if not helper_info.get("cmp") or helper_info.get("value") is None:
             logger.error(f"cmp and/or value not in helper when helper is {helper_info["helper"]}")
-            raise MalformedRuleError(f"cmp and/or value not in helper when helper is {helper_info["helper"]}")
+            raise HTTPException(status_code=500)
 
         if not OPERATORS.get(helper_info["cmp"]):
             logger.error(f"Operator {helper_info["cmp"]} not recognized")
-            raise MalformedRuleError(f"Operator {helper_info["cmp"]} not recognized")
+            raise HTTPException(status_code=500)
 
     def _parse_helper(self, helper_info: dict, intake: IntakeRecord, score: SeverityResult, db: Session) -> bool:
         if helper_info["helper"] == "age_in_years":
@@ -242,23 +239,23 @@ class RedFlagLayer:
 
         else:
             logger.error(f"Unrecognized format: {helper_info}")
-            raise MalformedRuleError(f"Unrecognized format: {helper_info}")
+            raise HTTPException(status_code=500)
 
 
     def _parse_field(self, field_info: dict, intake: IntakeRecord) -> bool:
         if not field_info.get("cmp") or field_info.get("value") is None:
             logger.error("cmp and/or value not in field")
-            raise MalformedRuleError("cmp and/or value not in field")
+            raise HTTPException(status_code=500)
 
         if not OPERATORS.get(field_info["cmp"]):
             logger.error(f"Operator {field_info["cmp"]} not recognized")
-            raise MalformedRuleError(f"Operator {field_info["cmp"]} not recognized")
+            raise HTTPException(status_code=500)
 
         try:
             field = getattr(intake, field_info["field"])
         except AttributeError:
             logger.exception(f"Unknown vital {field_info["field"]}")
-            raise MalformedRuleError(f"Unknown vital {field_info["field"]}")
+            raise HTTPException(status_code=500)
         
         if field is None:
             return False

@@ -31,8 +31,10 @@ from app.models.case_update import CaseUpdate
 from app.models.event_log import EventLog
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
+from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
 from app.services.priority_queue import PriorityQueue
+from app.services.scoring_engine import ScoringEngine
 from app.services.triage_service import EventType
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
@@ -154,6 +156,55 @@ def test_bad_field_returns_400(client, db_session, queue_override):
     err = resp.json()["error"]
     assert err["code"] == case["expect"]["error_code"]
     assert "heart_rate" in {d["field"] for d in err["details"]}
+
+
+def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
+    """clinical_update_fires_flag_tier_rewrite (requires red flags, not queueing).
+
+    A clinical patch that trips a red flag rewrites flag_tier + red_flags on the
+    re-scored severity row; the flag never sets the band (esi_level comes from the
+    score). Needs no queue placement, so it runs now that red flags are wired into
+    scoring. `_seed` hardcodes cardiac, so build the intake inline with normal
+    vitals for a clean baseline.
+    """
+    case = next(
+        c for c in CASES["cases"] if c["_name"] == "clinical_update_fires_flag_tier_rewrite"
+    )
+
+    # Cardiac + normal vitals -> baseline ESI-2, no flag (flag_tier 3).
+    patient = Patient(name="Flag Rewrite", date_of_birth=date(1980, 1, 1), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    intake = IntakeRecord(
+        patient_id=patient.patient_id, chief_complaint="cardiac",
+        heart_rate=80, blood_pressure_systolic=120, respiration_rate=16,
+        oxygen_saturation=98, temperature=98.6, pain_level=2,
+    )
+    db_session.add(intake)
+    db_session.commit()
+
+    baseline = ScoringEngine(db_session).score(intake, db_session)
+    db_session.commit()
+    assert baseline.flag_tier == 3  # normal vitals -> no flag yet
+
+    # Patch to shock vitals (HR 145 + SBP 88) -> fires flag 9 (Tier 1).
+    resp = client.patch(f"/intakes/{intake.intake_id}", json=case["patch"])
+    assert resp.status_code == 200
+
+    latest = (
+        db_session.query(PatientSeverity)
+        .filter(PatientSeverity.intake_id == intake.intake_id)
+        .order_by(PatientSeverity.severity_id.desc())
+        .first()
+    )
+    # flag_tier_updated + red_flags_rewritten
+    assert latest.flag_tier == 1
+    assert latest.flag_tier < baseline.flag_tier
+    assert latest.red_flags            # non-empty
+    assert latest.red_flag_fired is True
+    # esi_band_unchanged_by_flag: the band is the score's (13 pts -> ESI-1); the
+    # Tier-1 flag did NOT drag it there.
+    assert latest.system_ESI == "ESI-1"
 
 
 def test_unscoreable_update_returns_422(client, db_session, queue_override, api_examples):

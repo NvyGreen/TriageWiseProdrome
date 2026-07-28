@@ -1,7 +1,7 @@
 from datetime import date
 from enum import StrEnum
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
-from ..utils.dates import age_from_dob
+from ..utils.dates import age_in_years
 
 
 class ChiefComplaint(StrEnum):
@@ -66,7 +66,7 @@ class IntakeCreate(BaseModel):
     @field_validator("date_of_birth")
     @classmethod
     def check_valid_dob(cls, dob: date) -> date:
-        if age_from_dob(dob) < 0:
+        if age_in_years(dob) < 0:
             raise ValueError("Date of birth is in the future")
         return dob
     

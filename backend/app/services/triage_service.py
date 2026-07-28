@@ -23,7 +23,7 @@ from ..services.scoring_engine import ScoringEngine, CannotScoreError
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
 from ..utils.severity_result import SeverityResult
-from ..utils.dates import age_from_dob
+from ..utils.dates import age_in_years
 
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,7 @@ class TriageService:
                 logger.error("esi_level wasn't in database when it should be")
                 raise HTTPException(status_code=500)
 
-            entry = QueueEntry(i + 1, patient.patient_id, patient.name, age_from_dob(patient.date_of_birth), esi_level, priority_label, severity_score, "WAITING", record.created_at)
+            entry = QueueEntry(i + 1, patient.patient_id, patient.name, age_in_years(patient.date_of_birth), esi_level, priority_label, severity_score, "WAITING", record.created_at)
             entries.append(entry)
 
         return entries

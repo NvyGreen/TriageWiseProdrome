@@ -24,7 +24,7 @@ from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.services.priority_queue import PriorityQueue
-from app.utils.dates import age_from_dob
+from app.utils.dates import age_in_years
 
 TIME_FORMAT = "%H:%M"
 
@@ -98,7 +98,7 @@ def test_entry_includes_patient_details(client, db_session, queue_override):
     assert entry["patient_id"] == patient_id
     assert entry["name"] == "Detail Patient"
     # Computed, never hardcoded — a literal would rot on the patient's birthday.
-    assert entry["age"] == age_from_dob(dob)
+    assert entry["age"] == age_in_years(dob)
 
 
 def test_severity_fields_populated_when_severity_row_exists(client, db_session, queue_override):

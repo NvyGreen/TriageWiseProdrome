@@ -17,11 +17,19 @@ class Settings(BaseSettings):
     DB_PORT: int
     DB_NAME: str
     debug: bool = False
+    # Comma-separated allowed origins for CORS. Default is the local Vite dev
+    # server; set CORS_ALLOW_ORIGINS in the environment to the real frontend
+    # origin(s) per deploy. Never "*" — allow_credentials forbids it anyway.
+    CORS_ALLOW_ORIGINS: str = "http://localhost:5173"
 
     @property
     def DATABASE_URL(self) -> str:
         safe_password = quote_plus(self.DB_PASSWORD)
         return f"postgresql+psycopg2://{self.DB_USER}:{safe_password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ALLOW_ORIGINS.split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_ROOT / ".env",

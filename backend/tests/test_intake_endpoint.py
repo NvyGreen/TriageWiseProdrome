@@ -19,7 +19,7 @@ Deferred until status is persisted: `status_now`. Note that `still_in_queue` and
 touches the queue — so they catch regressions, not correctness.
 """
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -35,12 +35,15 @@ from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
 from app.services.priority_queue import PriorityQueue
 from app.services.scoring_engine import ScoringEngine
+from app.services.red_flag_layer import RedFlagLayer
 from app.services.triage_service import EventType
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "update_test_cases.json").read_text(encoding="utf-8"))
 
-TIME_FORMAT = "%H:%M"
+def _at(hhmm: str) -> datetime:
+    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
+    return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
 
 # Only the cases that don't need the scoring engine (req 1.4).
 RUNNABLE = {c["_name"]: c for c in CASES["cases"] if not c["needs_scoring"]}
@@ -69,6 +72,12 @@ def _seed(db_session, name, **vitals):
         patient_id=patient.patient_id, chief_complaint="cardiac", **vitals
     )
     db_session.add(intake)
+    db_session.flush()
+    # A queued intake has been scored (submitIntake invariant); the status path
+    # reads its severity back, so give it one.
+    db_session.add(
+        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    )
     db_session.commit()
     return intake.intake_id
 
@@ -82,7 +91,7 @@ def _seed_and_enqueue(db_session, queue, json_ids):
     id_map = {}
     for position, json_id in enumerate(json_ids, start=1):
         real_id = _seed(db_session, f"Case Patient {json_id}")
-        queue.insert(position, 3, "10:00", real_id, TIME_FORMAT)
+        queue.insert(position, 3, _at("10:00"), real_id)
         id_map[json_id] = real_id
     return id_map
 
@@ -183,9 +192,12 @@ def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
     db_session.add(intake)
     db_session.commit()
 
-    baseline = ScoringEngine(db_session).score(intake, db_session)
+    baseline = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
     assert baseline.flag_tier == 3  # normal vitals -> no flag yet
+
+    # Clinical update re-queues, so the intake must already be in the queue.
+    queue_override.insert(2, 3, _at("10:00"), intake.intake_id)
 
     # Patch to shock vitals (HR 145 + SBP 88) -> fires flag 9 (Tier 1).
     resp = client.patch(f"/intakes/{intake.intake_id}", json=case["patch"])
@@ -244,3 +256,82 @@ def test_unscoreable_update_returns_422(client, db_session, queue_override, api_
             update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=True)
         )
         db_session.commit()
+
+
+def test_clinical_update_partial_only_changes_sent_fields(client, db_session, queue_override):
+    """clinical_update_partial_only_changes_sent_fields: patching one vital changes
+    only it, re-scores, and writes a case_update carrying just that field.
+    """
+    patient = Patient(name="Partial Endpoint", date_of_birth=date(1980, 1, 1), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    intake = IntakeRecord(
+        patient_id=patient.patient_id, chief_complaint="cardiac",
+        heart_rate=100, pain_level=4, respiration_rate=18,
+    )
+    db_session.add(intake)
+    db_session.commit()
+    intake_id = intake.intake_id
+
+    # Clinical update re-queues, so the intake must already be in the queue.
+    queue_override.insert(2, 3, _at("10:00"), intake_id)
+
+    resp = client.patch(f"/intakes/{intake_id}", json={"pain_level": 8})
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    updated = db_session.get(IntakeRecord, intake_id)
+    assert updated.pain_level == 8              # sent field changed
+    assert updated.heart_rate == 100            # untouched
+    assert updated.respiration_rate == 18       # untouched
+
+    # rescored + case_update carries only the sent field.
+    assert len(_events(db_session, intake_id, EventType.SCORE_CALCULATED)) == 1
+    rows = _case_updates(db_session, intake_id)
+    assert len(rows) == 1
+    assert rows[0].updated_vitals == {"pain_level": 8}
+
+
+def test_clinical_update_raises_esi(client, db_session, queue_override):
+    """clinical_update_raises_esi: a clinical patch that raises severity re-scores,
+    moves the patient UP the queue, and fires case_updated + reprioritized.
+    """
+    # Target: abdominal + normal-for-scoring vitals -> baseline ESI-4.
+    patient = Patient(name="Rising Severity", date_of_birth=date(1980, 1, 1), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    target = IntakeRecord(
+        patient_id=patient.patient_id, chief_complaint="abdominal",
+        heart_rate=92, blood_pressure_systolic=120, oxygen_saturation=98,
+        respiration_rate=16, pain_level=2, temperature=98.6,
+    )
+    db_session.add(target)
+    db_session.commit()
+    target_id = target.intake_id
+
+    baseline = ScoringEngine(db_session).score(target, RedFlagLayer(db_session), db_session)
+    db_session.commit()
+
+    # A higher-priority filler sits above the target so it has room to move up.
+    queue_override.insert(2, 3, _at("09:00"), 88_888)     # filler, ESI-2
+    queue_override.insert(4, 3, _at("10:00"), target_id)  # target, ESI-4
+    position_before = queue_override.getIntakePosition(target_id)
+
+    # HR 138 (+3) + SpO2 89 (+4) -> ESI-1.
+    resp = client.patch(f"/intakes/{target_id}", json={"heart_rate": 138, "oxygen_saturation": 89})
+    assert resp.status_code == 200
+
+    latest = (
+        db_session.query(PatientSeverity)
+        .filter(PatientSeverity.intake_id == target_id)
+        .order_by(PatientSeverity.severity_id.desc())
+        .first()
+    )
+    # rescored + esi_band rose (more severe == lower number).
+    assert int(latest.system_ESI[-1]) < int(baseline.esi_level[-1])
+    # queue_moved_up.
+    assert queue_override.getIntakePosition(target_id) < position_before
+    # case_update_written + both events.
+    assert _case_updates(db_session, target_id)
+    assert len(_events(db_session, target_id, EventType.CASE_UPDATED)) == 1
+    assert len(_events(db_session, target_id, EventType.REPRIORITIZED)) == 1

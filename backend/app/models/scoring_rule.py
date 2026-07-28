@@ -16,4 +16,6 @@ class ScoringRule(Base):
     resource_level = Column(String(8))
     esi_anchor = Column(String(120))
     fallback_if_missing = Column(String(120), nullable=False)
+    scoring_action = Column(String(16))
+    confidence_effect = Column(String(8))
     is_active = Column(Boolean, nullable=False, server_default='true')

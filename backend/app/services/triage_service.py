@@ -19,6 +19,7 @@ from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
 
 from ..services.priority_queue import PriorityQueue
 from ..services.scoring_engine import ScoringEngine, CannotScoreError
+from ..services.red_flag_layer import RedFlagLayer
 
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
@@ -54,8 +55,9 @@ class TriageService:
     def __init__(self, db: Session):
         self.db = db
         self.scoringEngine = ScoringEngine(db)
+        self.redFlagLayer = RedFlagLayer(db)
 
-    def submitIntake(self, intake: IntakeCreate) -> Result:
+    def submitIntake(self, intake: IntakeCreate, queue: PriorityQueue) -> Result:
         try:
             new_patient = Patient(
                 name=intake.name,
@@ -76,20 +78,40 @@ class TriageService:
             self.db.add(new_intake)
             self.db.flush()
 
-            # TODO: score severity, check red flags, and place record in queue
-            severityResult: SeverityResult = self.scoringEngine.score(new_intake, self.db)
+            intake_created = EventLog(event_type=EventType.INTAKE_CREATED, patient_id=patient_id, intake_id=new_intake.intake_id)
+            self.db.add(intake_created)
+
+            # Scores intake and places record in queue
+            severityResult: SeverityResult = self.scoringEngine.score(new_intake, self.redFlagLayer, self.db)
             score_calculated = EventLog(event_type=EventType.SCORE_CALCULATED, patient_id=patient_id, intake_id=new_intake.intake_id)
             self.db.add(score_calculated)
 
-            intake_created = EventLog(event_type=EventType.INTAKE_CREATED, patient_id=patient_id, intake_id=new_intake.intake_id)
-            self.db.add(intake_created)
+            if severityResult.flag_tier < 3:
+                red_flag_fired = EventLog(event_type=EventType.RED_FLAG_FIRED, patient_id=patient_id, intake_id=new_intake.intake_id)
+                self.db.add(red_flag_fired)
+
+            esi_num = int(severityResult.esi_level[-1])
+            queue_position = queue.insert(esi_num, severityResult.flag_tier, new_intake.created_at, new_intake.intake_id)
+            queued = EventLog(event_type=EventType.QUEUED, patient_id=patient_id, intake_id=new_intake.intake_id)
+            self.db.add(queued)
+
             self.db.flush()
-            return Result(new_intake.intake_id, severityResult.severity_score)
+            return Result(new_intake.intake_id, severityResult.severity_score, queue_position)
         except SQLAlchemyError as e:
+            try:
+                queue.remove(new_intake.intake_id)
+            except ValueError:
+                pass
+
             self.db.rollback()
             logger.exception("Intake creation failed")
             raise HTTPException(status_code=500) from e
         except CannotScoreError:
+            try:
+                queue.remove(new_intake.intake_id)
+            except ValueError:
+                pass
+
             self.db.rollback()
             logger.exception("The intake is valid but cannot be scored")
             raise UnscoreableException()
@@ -125,7 +147,7 @@ class TriageService:
 
             record, patient, severity = row.IntakeRecord, row.Patient, row.PatientSeverity
 
-            # TODO: Once scoring is implemented, these should never be None
+            # TODO: Once queue is persisted to database, these should never be none
             esi_level = row.esi_level
             priority_label = row.priority
             severity_score = severity.severity_score if severity is not None else None
@@ -150,29 +172,52 @@ class TriageService:
             logger.error("No intake with this id")
             raise IntakeNotFoundError(intake_id=intake_id)
         patient_id = intake.patient_id
-        
-        if updates.status is not None:            
+
+        # Status change, no re-queue
+        if updates.status is not None:
+            try:
+                stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
+                severity = self.db.scalar(stmt)
+                if severity is None:
+                    logger.error("severity wasn't in database when it should be")
+                    raise HTTPException(status_code=500)
+                severity_score = severity.severity_score
+            except SQLAlchemyError as e:
+                self.db.rollback()
+                logger.exception("Getting patient severity failed")
+                raise HTTPException(status_code=500) from e
+            
             # TODO: Persist status change in triage_queue table
             if updates.status == Status.DISPOSITIONED:
                 try:
                     queue.remove(intake_id)
+                    new_event = EventLog(event_type=EventType.STATUS_CHANGED, patient_id=patient_id, intake_id=intake_id)
+                    self.db.add(new_event)
+                    self.db.flush()
+                except SQLAlchemyError as e:
+                    self.db.rollback()
+                    logger.exception("Event logging failed")
+                    raise HTTPException(status_code=500) from e
                 except ValueError:
                     # TODO: Once triage_queue is implemented, may make this error out instead of a no-op
                     # logger.exception("No intake with this id")
                     # raise HTTPException(status_code=404)
                     pass
+                return Result(intake_id, severity_score)
             
             try:
                 new_event = EventLog(event_type=EventType.STATUS_CHANGED, patient_id=patient_id, intake_id=intake_id)
                 self.db.add(new_event)
                 self.db.flush()
-                return Result(intake_id)
+                queue_position = queue.getIntakePosition(intake_id)
+                return Result(intake_id, severity_score, queue_position)
             except SQLAlchemyError as e:
                 self.db.rollback()
                 logger.exception("Event logging failed")
                 raise HTTPException(status_code=500) from e
         
 
+        # Updating patient info, may re-queue
         try:
             dia = updates.blood_pressure_diastolic if 'blood_pressure_diastolic' in updates.model_fields_set else intake.blood_pressure_diastolic
             syst = updates.blood_pressure_systolic if 'blood_pressure_systolic' in updates.model_fields_set else intake.blood_pressure_systolic
@@ -200,11 +245,21 @@ class TriageService:
                     updated_vitals[field] = new_value
 
             if updated_vitals:
-                # TODO: Once scoring is implemented, re-score and re-queue based on these values
-                severityResult: SeverityResult = self.scoringEngine.score(intake, self.db)
+                # Re-score and re-queue based on these values
+                severityResult: SeverityResult = self.scoringEngine.score(intake, self.redFlagLayer, self.db)
                 severity_score = severityResult.severity_score
                 score_calculated = EventLog(event_type=EventType.SCORE_CALCULATED, patient_id=patient_id, intake_id=intake_id)
                 self.db.add(score_calculated)
+
+                if severityResult.flag_tier < 3:
+                    red_flag_fired = EventLog(event_type=EventType.RED_FLAG_FIRED, patient_id=patient_id, intake_id=intake_id)
+                    self.db.add(red_flag_fired)
+
+                esi_num = int(severityResult.esi_level[-1])
+                old_position, new_position = queue.updatePatientPosition(intake_id, esi_num, severityResult.flag_tier)
+                if old_position != new_position:
+                    reprioritized = EventLog(event_type=EventType.REPRIORITIZED, patient_id=patient_id, intake_id=intake_id)
+                    self.db.add(reprioritized)
 
                 case_update = CaseUpdate(patient_id=patient_id, intake_id=intake_id, updated_vitals=updated_vitals)
                 new_event = EventLog(event_type=EventType.CASE_UPDATED, patient_id=patient_id, intake_id=intake_id)
@@ -214,9 +269,10 @@ class TriageService:
                 stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
                 severity = self.db.scalar(stmt)
                 severity_score = severity.severity_score if severity is not None else None
+                new_position = queue.getIntakePosition(intake_id)
             
             self.db.flush()
-            return Result(intake_id, severity_score)
+            return Result(intake_id, severity_score, new_position)
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.exception("Vitals update failed")

@@ -13,7 +13,7 @@ Deferred: `status_now` (status isn't persisted yet — see the triage_queue TODO
 anything re-scored (req 1.4), `actual_outcome` (nothing writes it), and the
 unscoreable case (needs exclude_unset so an explicit null can clear a vital).
 """
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -22,11 +22,15 @@ from app.models.case_update import CaseUpdate
 from app.models.event_log import EventLog
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
+from app.models.patient_severity import PatientSeverity
 from app.schemas.intake_update import IntakeUpdate, Status
 from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import EventType, TriageService, IntakeNotFoundError
 
-TIME_FORMAT = "%H:%M"
+
+def _at(hhmm: str) -> datetime:
+    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
+    return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -47,6 +51,12 @@ def _seed(db_session, name="Update Patient", **vitals):
         **vitals,
     )
     db_session.add(intake)
+    db_session.flush()
+    # A queued intake has been scored (submitIntake invariant); the status path
+    # reads its severity back, so give it one.
+    db_session.add(
+        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    )
     db_session.commit()
     return patient.patient_id, intake.intake_id
 
@@ -68,6 +78,8 @@ def test_partial_update_changes_only_sent_fields(db_session, queue):
         db_session, "Partial Update",
         heart_rate=100, pain_level=4, respiration_rate=18,
     )
+    # Clinical update re-queues, so the intake must already be in the queue.
+    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8), queue)
     db_session.commit()
@@ -82,6 +94,7 @@ def test_case_update_records_only_sent_vitals(db_session, queue):
     patient_id, intake_id = _seed(
         db_session, "Case Update Row", heart_rate=100, pain_level=4,
     )
+    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8), queue)
     db_session.commit()
@@ -94,6 +107,7 @@ def test_case_update_records_only_sent_vitals(db_session, queue):
 
 def test_clinical_update_fires_case_updated_event(db_session, queue):
     _, intake_id = _seed(db_session, "Event Patient", heart_rate=100)
+    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(intake_id, IntakeUpdate(heart_rate=120), queue)
     db_session.commit()
@@ -116,6 +130,8 @@ def test_empty_patch_is_rejected():
 def test_unchanged_values_write_nothing(db_session, queue):
     """Values identical to what's stored are a no-op, not an update."""
     _, intake_id = _seed(db_session, "Same Values", heart_rate=100, pain_level=4)
+    # Even a no-op update reads back the queue position, so it must be enqueued.
+    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(
         intake_id, IntakeUpdate(heart_rate=100, pain_level=4), queue
@@ -131,9 +147,9 @@ def test_disposition_removes_from_queue(db_session, queue):
     _, target = _seed(db_session, "Gets Dispositioned")
     _, last = _seed(db_session, "Stays Last")
 
-    queue.insert(1, 3, "10:00", first, TIME_FORMAT)
-    queue.insert(2, 3, "10:01", target, TIME_FORMAT)
-    queue.insert(3, 3, "10:02", last, TIME_FORMAT)
+    queue.insert(1, 3, _at("10:00"), first)
+    queue.insert(2, 3, _at("10:01"), target)
+    queue.insert(3, 3, _at("10:02"), last)
 
     TriageService(db_session).updatePatient(
         target, IntakeUpdate(status=Status.DISPOSITIONED), queue
@@ -146,7 +162,7 @@ def test_disposition_removes_from_queue(db_session, queue):
 
 def test_status_change_fires_status_changed_event(db_session, queue):
     _, intake_id = _seed(db_session, "Status Patient")
-    queue.insert(3, 3, "10:00", intake_id, TIME_FORMAT)
+    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(
         intake_id, IntakeUpdate(status=Status.IN_ROOM), queue

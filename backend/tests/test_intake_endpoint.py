@@ -239,6 +239,11 @@ def test_unscoreable_update_returns_422(client, db_session, queue_override, api_
     db_session.flush()
     intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint=complaint)
     db_session.add(intake)
+    db_session.flush()
+    # An updated intake has already been scored (submitIntake invariant).
+    db_session.add(
+        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    )
     db_session.commit()
 
     db_session.execute(
@@ -270,6 +275,11 @@ def test_clinical_update_partial_only_changes_sent_fields(client, db_session, qu
         heart_rate=100, pain_level=4, respiration_rate=18,
     )
     db_session.add(intake)
+    db_session.flush()
+    # An updated intake has already been scored (submitIntake invariant).
+    db_session.add(
+        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    )
     db_session.commit()
     intake_id = intake.intake_id
 

@@ -182,6 +182,7 @@ class ScoringEngine:
 
         fired_flags = red_flag_layer.check(intake, result, db)
         red_flags = []
+        red_flag_ids = []
         flag_tier = 3
         for flag in fired_flags:
             red_flags.append({
@@ -189,6 +190,7 @@ class ScoringEngine:
                 "message": flag.message,
                 "flag_tier": flag.flag_tier
             })
+            red_flag_ids.append(flag.flag_id)
             flag_tier = min(flag_tier, flag.flag_tier)
 
         try:
@@ -225,6 +227,7 @@ class ScoringEngine:
             raise HTTPException(status_code=500) from e
 
         result.flag_tier = flag_tier
+        result.red_flag_ids = red_flag_ids
         return result
 
 

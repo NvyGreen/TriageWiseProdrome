@@ -9,4 +9,5 @@ class EventLog(Base):
     event_type = Column(String(40), nullable=False)
     patient_id = Column(Integer, ForeignKey("patient.patient_id", ondelete="SET NULL"), nullable=True, index=True)
     intake_id = Column(Integer, ForeignKey("intake_record.intake_id", ondelete="SET NULL"), nullable=True, index=True)
+    details = Column(JSONB, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from .driver import Driver
 
 @dataclass
@@ -13,4 +13,5 @@ class SeverityResult:
     data_completeness: str
     fallbacks_applied: dict[str, str]
     confidence: str
+    red_flag_ids: list[int] = field(default_factory=list)
     flag_tier: int = 3

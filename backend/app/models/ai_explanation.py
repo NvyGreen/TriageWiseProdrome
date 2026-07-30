@@ -10,6 +10,8 @@ class AIExplanation(Base):
     intake_id = Column(Integer, ForeignKey("intake_record.intake_id", ondelete="CASCADE"), nullable=False, index=True)
     explanation_text = Column(String, nullable=False)
     factor_breakdown = Column(JSONB, nullable=False, server_default="{}")
+    data_completeness = Column(String(20), nullable=False)
+    gaps = Column(JSONB, nullable=False, server_default="{}")
     step = Column(String(8))
     lead_element = Column(String(24))
     model_used = Column(String(40), server_default="rule-based template")

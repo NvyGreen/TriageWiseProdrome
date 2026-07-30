@@ -17,7 +17,7 @@ from ..services.red_flag_layer import RedFlagLayer
 from ..utils.rule import Rule
 from ..utils.driver import Driver
 from ..utils.severity_result import SeverityResult
-from ..utils.vitals import VITAL_MAP
+from ..utils.vitals import VITAL_MAP, TOTAL_VITALS
 
 
 ESI_1_THRESHOLD = 8
@@ -38,8 +38,6 @@ class FallbackCodes(StrEnum):
     ASSUME_ZERO = "assume_zero"
 
 incompleteDriver = namedtuple("incompleteDriver", ["rule_id", "factor", "threshold", "patient_value", "weight"])
-
-TOTAL_VITALS = 5
 
 logger = logging.getLogger(__name__)
 

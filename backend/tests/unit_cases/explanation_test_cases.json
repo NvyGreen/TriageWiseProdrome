@@ -1,0 +1,689 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — explanation builder cases (reqs 1.8, 1.8-T)",
+    "validates": "ExplanationBuilder.build(severity_result, intake) → Explanation — the 4-part XAI object",
+    "how_to_use": "Each case: build a SeverityResult + intake, call build(), assert the Explanation's four fields exactly. named_drivers must trace 1:1 to fired rules (no invented drivers). gap_acknowledgement must contain all 4 gap keys.",
+    "explanation_shape": {
+      "data_completeness": "string, form 'N of 5' (scoreable vitals: SpO2, HR, RR, SBP, pain)",
+      "named_drivers": "list[Driver] — one per fired rule; factor, threshold, patient_value, weight, contribution_pct",
+      "gap_acknowledgement": "dict with keys: not_provided, assumed, recorded_not_scored, red_flag_input, beyond_the_data (each a list; empty list when none)",
+      "fallback_instruction": "constant disclaimer string"
+    },
+    "conventions": [
+      "data_completeness denominator is 5 (scoreable fields), never 7 or 8.",
+      "named_drivers come straight from severity_result.named_drivers — the builder must not add, drop, or invent any.",
+      "not_provided / assumed come from the scoreable vitals (missing_fields + fallbacks_applied).",
+      "recorded_not_scored comes from the INTAKE — non-scoreable fields the patient DID provide (temperature, blood_sugar, blood_pressure_diastolic).",
+      "red_flag_input comes from the INTAKE — source-qualified strings naming the field and value that fed a fired flag, e.g. 'Pre-existing conditions: diabetes', 'Symptoms: fast_positive'. Preserves which bucket each input came from.",
+      "beyond_the_data is a fixed list, same every case.",
+      "fallback_instruction is a constant — identical in every case.",
+      "recorded_not_scored vs red_flag_input are mutually exclusive: a non-scoreable field that FED a fired flag (e.g. temperature driving flag 8/10, or the borderline count) goes to red_flag_input; if it fed no flag it stays in recorded_not_scored. red_flag_input wins."
+    ],
+    "beyond_the_data_fixed": [
+      "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+    ],
+    "disclaimer": "This is a triage aid, not a diagnosis. Clinician judgement required."
+  },
+  "cases": [
+    {
+      "_name": "full_data_no_gaps",
+      "_why": "All 5 scoreable vitals present, nothing assumed — not_provided and assumed are empty; drivers trace to the fired rules only.",
+      "severity_result": {
+        "severity_score": 9,
+        "esi_level": "ESI-1",
+        "named_drivers": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "patient_value": "cardiac",
+            "weight": 6,
+            "contribution_pct": 67,
+            "threshold": "chest pain (cardiac concern)"
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "patient_value": 124,
+            "weight": 3,
+            "contribution_pct": 33,
+            "threshold": "> 120 bpm"
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": []
+      },
+      "intake": {
+        "chief_complaint": "cardiac",
+        "heart_rate": 124,
+        "blood_pressure_systolic": 118,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 3,
+        "temperature": 98.6,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "named_drivers_rule_ids": [
+          9,
+          3
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [],
+          "assumed": [],
+          "recorded_not_scored": [
+            "temperature"
+          ],
+          "red_flag_input": [],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "drivers_trace_to_fired_rules_only": true
+      }
+    },
+    {
+      "_name": "missing_vitals_not_provided_and_assumed",
+      "_why": "SpO2 assumed normal, RR + BP not provided — the two gap types must be distinct and correctly populated.",
+      "severity_result": {
+        "severity_score": 5,
+        "esi_level": "ESI-3",
+        "named_drivers": [
+          {
+            "rule_id": 10,
+            "factor": "Chief complaint",
+            "patient_value": "respiratory",
+            "weight": 4,
+            "contribution_pct": 80,
+            "threshold": "shortness of breath"
+          },
+          {
+            "rule_id": 4,
+            "factor": "Heart rate",
+            "patient_value": 110,
+            "weight": 1,
+            "contribution_pct": 20,
+            "threshold": "100-120 bpm"
+          }
+        ],
+        "missing_fields": [
+          "oxygen_saturation",
+          "respiration_rate",
+          "blood_pressure_systolic"
+        ],
+        "fallbacks_applied": [
+          {
+            "field": "oxygen_saturation",
+            "action": "assume_normal"
+          },
+          {
+            "field": "respiration_rate",
+            "action": "skip_rule"
+          },
+          {
+            "field": "blood_pressure_systolic",
+            "action": "skip_rule"
+          }
+        ]
+      },
+      "intake": {
+        "chief_complaint": "respiratory",
+        "heart_rate": 110,
+        "blood_pressure_systolic": null,
+        "oxygen_saturation": null,
+        "respiration_rate": null,
+        "pain_level": 6,
+        "temperature": 98.9,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "2 of 5",
+        "named_drivers_rule_ids": [
+          10,
+          4
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [
+            "respiration_rate",
+            "blood_pressure_systolic"
+          ],
+          "assumed": [
+            "oxygen_saturation"
+          ],
+          "recorded_not_scored": [
+            "temperature"
+          ],
+          "red_flag_input": [],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "assumed_and_not_provided_are_distinct": true
+      },
+      "_note": "Every missing scoreable field has a fallbacks_applied entry (fallback_if_missing is non-nullable): SpO2 assume_normal, RR/BP skip_rule. not_provided = skip_rule fields; assumed = assume_normal/zero."
+    },
+    {
+      "_name": "pain_assumed_zero_still_high_confidence",
+      "_why": "Pain missing → assume_zero. It appears under 'assumed' but (elsewhere) confidence stays HIGH. Builder still lists it as an assumed gap.",
+      "severity_result": {
+        "severity_score": 6,
+        "esi_level": "ESI-2",
+        "named_drivers": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "patient_value": "cardiac",
+            "weight": 6,
+            "contribution_pct": 100,
+            "threshold": "chest pain (cardiac concern)"
+          }
+        ],
+        "missing_fields": [
+          "pain_level"
+        ],
+        "fallbacks_applied": [
+          {
+            "field": "pain_level",
+            "action": "assume_zero"
+          }
+        ]
+      },
+      "intake": {
+        "chief_complaint": "cardiac",
+        "heart_rate": 84,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 16,
+        "pain_level": null,
+        "temperature": 98.6,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "4 of 5",
+        "named_drivers_rule_ids": [
+          9
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [],
+          "assumed": [
+            "pain_level"
+          ],
+          "recorded_not_scored": [
+            "temperature"
+          ],
+          "red_flag_input": [],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required."
+      }
+    },
+    {
+      "_name": "recorded_not_scored_multiple_fields",
+      "_why": "Temperature, blood sugar, and diastolic BP were all recorded but none has a scoring rule — all three land in recorded_not_scored.",
+      "severity_result": {
+        "severity_score": 6,
+        "esi_level": "ESI-2",
+        "named_drivers": [
+          {
+            "rule_id": 8,
+            "factor": "Chief complaint",
+            "patient_value": "stroke",
+            "weight": 6,
+            "contribution_pct": 100,
+            "threshold": "stroke symptoms (FAST)"
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": []
+      },
+      "intake": {
+        "chief_complaint": "stroke",
+        "heart_rate": 82,
+        "blood_pressure_systolic": 128,
+        "blood_pressure_diastolic": 84,
+        "oxygen_saturation": 98,
+        "respiration_rate": 16,
+        "pain_level": 2,
+        "temperature": 98.7,
+        "blood_sugar": 110,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "named_drivers_rule_ids": [
+          8
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [],
+          "assumed": [],
+          "recorded_not_scored": [
+            "temperature",
+            "blood_sugar",
+            "blood_pressure_diastolic"
+          ],
+          "red_flag_input": [],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required."
+      }
+    },
+    {
+      "_name": "red_flag_input_fields_listed",
+      "_why": "Immunocompromised + sickle_cell conditions and fast_positive + fever symptoms fed red-flag rules (flags 5, 10, 11 all fire). They appear in red_flag_input as source-qualified strings, not among scoring drivers.",
+      "severity_result": {
+        "severity_score": 6,
+        "esi_level": "ESI-2",
+        "named_drivers": [
+          {
+            "rule_id": 8,
+            "factor": "Chief complaint",
+            "patient_value": "stroke",
+            "weight": 6,
+            "contribution_pct": 100,
+            "threshold": "stroke symptoms (FAST)"
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": [],
+        "red_flag_ids": [
+          5,
+          10,
+          11
+        ]
+      },
+      "intake": {
+        "chief_complaint": "stroke",
+        "heart_rate": 88,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 3,
+        "temperature": 100.9,
+        "pre_existing_conditions": [
+          "immunocompromised",
+          "sickle_cell"
+        ],
+        "symptoms": [
+          "fast_positive",
+          "fever"
+        ]
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "named_drivers_rule_ids": [
+          8
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [],
+          "assumed": [],
+          "recorded_not_scored": [],
+          "red_flag_input": [
+            "Pre-existing conditions: immunocompromised, sickle_cell",
+            "Symptoms: fast_positive, fever",
+            "Vitals: temperature"
+          ],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "_note": "red_flag_input lists intake fields that fed flags; these are NOT scoring drivers and must not appear in named_drivers."
+      },
+      "_note": "Grouped form: one entry per source type, values comma-joined. temperature fed flag 10 (immunocompromised + temp>=100.4) so it's a Vitals red_flag_input, not recorded_not_scored."
+    },
+    {
+      "_name": "red_flag_input_or_branch_dropped",
+      "_why": "Flag 11 = sickle_cell AND (cardiac OR fever OR chest_pain). Patient has sickle_cell + fever only (no chest_pain, complaint is general). red_flag_input must list sickle_cell and fever but NOT chest_pain — the OR value the patient lacks is dropped by intersecting the fired flag's tree candidates with the actual intake.",
+      "severity_result": {
+        "severity_score": 1,
+        "esi_level": "ESI-4",
+        "named_drivers": [
+          {
+            "rule_id": 13,
+            "factor": "Chief complaint",
+            "threshold": "other / general",
+            "patient_value": "general",
+            "weight": 1,
+            "contribution_pct": 100
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": [],
+        "red_flag_ids": [
+          11
+        ]
+      },
+      "intake": {
+        "chief_complaint": "general",
+        "heart_rate": 95,
+        "blood_pressure_systolic": 118,
+        "oxygen_saturation": 96,
+        "respiration_rate": 20,
+        "pain_level": 6,
+        "temperature": 101.2,
+        "pre_existing_conditions": [
+          "sickle_cell"
+        ],
+        "symptoms": [
+          "fever"
+        ]
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "named_drivers_rule_ids": [
+          13
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [],
+          "assumed": [],
+          "recorded_not_scored": [
+            "temperature"
+          ],
+          "red_flag_input": [
+            "Pre-existing conditions: sickle_cell",
+            "Symptoms: fever"
+          ],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "must_not_contain_in_red_flag_input": [
+          "chest_pain"
+        ],
+        "_note": "chest_pain is dropped (patient lacks it) even though flag 11's tree lists it. temperature is recorded_not_scored, NOT red_flag_input, because flag 11 does not read temperature and no temp-reading flag fired — it fed no flag."
+      },
+      "_note": "Grouped form. chest_pain dropped (patient lacks it) though flag 11's tree lists it. temperature fed no flag (flag 11 doesn't read temp) -> recorded_not_scored."
+    },
+    {
+      "_name": "red_flag_input_pregnancy_status",
+      "_why": "Postpartum patient fires flag 7 (postpartum AND heavy_bleeding). pregnancy_status is value-bearing, so red_flag_input must surface 'Pregnancy status: postpartum' (the status value, not the bare field name) alongside 'Symptoms: heavy_bleeding'. Guards the pregnancy_status extraction path.",
+      "severity_result": {
+        "severity_score": 1,
+        "esi_level": "ESI-4",
+        "named_drivers": [
+          {
+            "rule_id": 13,
+            "factor": "Chief complaint",
+            "threshold": "other / general",
+            "patient_value": "general",
+            "weight": 1,
+            "contribution_pct": 100
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": [],
+        "red_flag_ids": [
+          7
+        ]
+      },
+      "intake": {
+        "chief_complaint": "general",
+        "heart_rate": 96,
+        "blood_pressure_systolic": 118,
+        "oxygen_saturation": 97,
+        "respiration_rate": 18,
+        "pain_level": 5,
+        "temperature": 98.9,
+        "pregnancy_status": "postpartum",
+        "pre_existing_conditions": [],
+        "symptoms": [
+          "heavy_bleeding"
+        ]
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "named_drivers_rule_ids": [
+          13
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [],
+          "assumed": [],
+          "recorded_not_scored": [
+            "temperature"
+          ],
+          "red_flag_input": [
+            "Pregnancy status: postpartum",
+            "Symptoms: heavy_bleeding"
+          ],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "_note": "pregnancy_status surfaces as the value 'postpartum', prefixed 'Pregnancy status:'. temperature (98.9, normal) fed no flag -> recorded_not_scored."
+      }
+    },
+    {
+      "_name": "complaint_only_zero_vitals_provided",
+      "_why": "Worst-coverage case: only the complaint scored, every scoreable vital missing. data_completeness 0 of 5; drivers = just the complaint.",
+      "severity_result": {
+        "severity_score": 6,
+        "esi_level": "ESI-2",
+        "named_drivers": [
+          {
+            "rule_id": 8,
+            "factor": "Chief complaint",
+            "patient_value": "stroke",
+            "weight": 6,
+            "contribution_pct": 100,
+            "threshold": "stroke symptoms (FAST)"
+          }
+        ],
+        "missing_fields": [
+          "heart_rate",
+          "blood_pressure_systolic",
+          "oxygen_saturation",
+          "respiration_rate",
+          "pain_level"
+        ],
+        "fallbacks_applied": [
+          {
+            "field": "oxygen_saturation",
+            "action": "assume_normal"
+          },
+          {
+            "field": "heart_rate",
+            "action": "skip_rule"
+          },
+          {
+            "field": "respiration_rate",
+            "action": "skip_rule"
+          },
+          {
+            "field": "blood_pressure_systolic",
+            "action": "skip_rule"
+          },
+          {
+            "field": "pain_level",
+            "action": "assume_zero"
+          }
+        ]
+      },
+      "intake": {
+        "chief_complaint": "stroke",
+        "heart_rate": null,
+        "blood_pressure_systolic": null,
+        "oxygen_saturation": null,
+        "respiration_rate": null,
+        "pain_level": null,
+        "temperature": 98.4,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "0 of 5",
+        "named_drivers_rule_ids": [
+          8
+        ],
+        "gap_acknowledgement": {
+          "not_provided": [
+            "heart_rate",
+            "respiration_rate",
+            "blood_pressure_systolic"
+          ],
+          "assumed": [
+            "oxygen_saturation",
+            "pain_level"
+          ],
+          "recorded_not_scored": [
+            "temperature"
+          ],
+          "red_flag_input": [],
+          "beyond_the_data": [
+            "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+          ]
+        },
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "_note": "skip_rule fields → not_provided; assume_normal/assume_zero fields → assumed."
+      }
+    },
+    {
+      "_name": "no_invented_drivers_guard",
+      "_why": "The builder must copy named_drivers verbatim from severity_result — same count, same rule_ids, no additions even when many flags fired or many fields present.",
+      "severity_result": {
+        "severity_score": 13,
+        "esi_level": "ESI-1",
+        "named_drivers": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "patient_value": "cardiac",
+            "weight": 6,
+            "contribution_pct": 46,
+            "threshold": "chest pain (cardiac concern)"
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "patient_value": 128,
+            "weight": 3,
+            "contribution_pct": 23,
+            "threshold": "> 120 bpm"
+          },
+          {
+            "rule_id": 1,
+            "factor": "SpO2",
+            "patient_value": 89,
+            "weight": 4,
+            "contribution_pct": 31,
+            "threshold": "< 92%"
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": [],
+        "red_flag_ids": [
+          9
+        ]
+      },
+      "intake": {
+        "chief_complaint": "cardiac",
+        "heart_rate": 128,
+        "blood_pressure_systolic": 96,
+        "oxygen_saturation": 89,
+        "respiration_rate": 20,
+        "pain_level": 5,
+        "temperature": 99.1,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "named_drivers_rule_ids": [
+          9,
+          3,
+          1
+        ],
+        "driver_count": 3,
+        "no_driver_beyond_severity_result": true,
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required."
+      }
+    },
+    {
+      "_name": "gap_dict_always_has_all_five_keys",
+      "_why": "Structural invariant: even with no gaps at all, gap_acknowledgement must contain all five keys (empty lists), never missing keys.",
+      "severity_result": {
+        "severity_score": 6,
+        "esi_level": "ESI-2",
+        "named_drivers": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "patient_value": "cardiac",
+            "weight": 6,
+            "contribution_pct": 100,
+            "threshold": "chest pain (cardiac concern)"
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": []
+      },
+      "intake": {
+        "chief_complaint": "cardiac",
+        "heart_rate": 84,
+        "blood_pressure_systolic": 120,
+        "oxygen_saturation": 98,
+        "respiration_rate": 16,
+        "pain_level": 2,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "data_completeness": "5 of 5",
+        "gap_keys_present": [
+          "not_provided",
+          "assumed",
+          "recorded_not_scored",
+          "red_flag_input",
+          "beyond_the_data"
+        ],
+        "recorded_not_scored": [],
+        "_note": "No temperature/blood_sugar in this intake, so recorded_not_scored is empty — but the key must still exist."
+      }
+    },
+    {
+      "_name": "fallback_instruction_is_constant",
+      "_why": "The disclaimer is identical regardless of inputs — assert the exact constant string.",
+      "severity_result": {
+        "severity_score": 1,
+        "esi_level": "ESI-4",
+        "named_drivers": [
+          {
+            "rule_id": 13,
+            "factor": "Chief complaint",
+            "patient_value": "general",
+            "weight": 1,
+            "contribution_pct": 100,
+            "threshold": "other / general"
+          }
+        ],
+        "missing_fields": [],
+        "fallbacks_applied": []
+      },
+      "intake": {
+        "chief_complaint": "general",
+        "heart_rate": 78,
+        "blood_pressure_systolic": 118,
+        "oxygen_saturation": 98,
+        "respiration_rate": 16,
+        "pain_level": 1,
+        "pre_existing_conditions": [],
+        "symptoms": []
+      },
+      "expect": {
+        "fallback_instruction": "This is a triage aid, not a diagnosis. Clinician judgement required.",
+        "instruction_identical_across_cases": true
+      }
+    }
+  ]
+}

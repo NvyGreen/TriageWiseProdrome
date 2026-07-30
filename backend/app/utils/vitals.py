@@ -5,3 +5,5 @@ VITAL_MAP = {
     "Systolic BP": "blood_pressure_systolic",
     "Pain score": "pain_level"
 }
+
+TOTAL_VITALS = 5

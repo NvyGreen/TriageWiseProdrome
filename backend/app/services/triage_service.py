@@ -13,6 +13,7 @@ from ..models.patient_severity import PatientSeverity
 from ..models.esi_band import ESIBand
 from ..models.event_log import EventLog
 from ..models.case_update import CaseUpdate
+from ..models.ai_explanation import AIExplanation
 
 from ..schemas.intake_create import IntakeCreate
 from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
@@ -20,14 +21,30 @@ from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
 from ..services.priority_queue import PriorityQueue
 from ..services.scoring_engine import ScoringEngine, CannotScoreError
 from ..services.red_flag_layer import RedFlagLayer
+from ..services.explanation_builder import ExplanationBuilder
 
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
 from ..utils.severity_result import SeverityResult
+from ..utils.driver import Driver
 from ..utils.dates import age_in_years
+from ..utils.vitals import VITAL_MAP, TOTAL_VITALS
 
 
 logger = logging.getLogger(__name__)
+
+LABEL_MAP = {
+    "ESI-1": "Critical",
+    "ESI-2": "Emergent",
+    "ESI-3": "Urgent",
+    "ESI-4": "Less urgent",
+    "ESI-5": "Non-urgent"
+}
+
+VITAL_RENDER = {v: k for k, v in VITAL_MAP.items()}
+VITAL_RENDER["temperature"] = "Temperature"
+VITAL_RENDER["blood_pressure_diastolic"] = "Diastolic BP"
+VITAL_RENDER["blood_sugar"] = "Blood sugar"
 
 
 class EventType(StrEnum):
@@ -56,6 +73,7 @@ class TriageService:
         self.db = db
         self.scoringEngine = ScoringEngine(db)
         self.redFlagLayer = RedFlagLayer(db)
+        self.explanationBuilder = ExplanationBuilder(db)
 
     def submitIntake(self, intake: IntakeCreate, queue: PriorityQueue) -> Result:
         try:
@@ -120,6 +138,7 @@ class TriageService:
                 }
             )
             self.db.add(queued)
+            self.explanationBuilder.build(severityResult, new_intake)
 
             self.db.flush()
             return Result(new_intake.intake_id, severityResult.severity_score, queue_position)
@@ -340,6 +359,7 @@ class TriageService:
                         }
                     )
                     self.db.add(reprioritized)
+                self.explanationBuilder.build(severityResult, intake)
 
                 case_update = CaseUpdate(patient_id=patient_id, intake_id=intake_id, updated_vitals=updated_vitals)
                 new_event = EventLog(
@@ -366,3 +386,66 @@ class TriageService:
             self.db.rollback()
             logger.exception("The intake is valid but cannot be scored")
             raise UnscoreableException()
+
+
+    def getPatientDetail(self, intake_id: int):
+        try:
+            stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
+            severity = self.db.scalar(stmt)
+            if severity is None:
+                logger.error("Severity was none when it shouldn't be")
+                raise HTTPException(status_code=500)
+
+            stmt = select(AIExplanation).where(AIExplanation.intake_id == intake_id)
+            explanation = self.db.scalar(stmt)
+            if explanation is None:
+                logger.error("Explanation was none when it shouldn't be")
+                raise HTTPException(status_code=500)
+        except SQLAlchemyError as e:
+            logger.exception("patient_severity retrieval failed")
+            raise HTTPException(status_code=500) from e
+
+        lede = self._render_lede(severity, explanation)
+        # TODO: This should return a more detailed breakdown, not just the lede
+        return lede
+
+
+    def _render_lede(self, severity: PatientSeverity, explanation: AIExplanation) -> str:
+        lede = f"This patient scored {int(severity.severity_score)} points -> {severity.system_ESI} ({LABEL_MAP[severity.system_ESI]}) from "
+
+        n_drivers = len(explanation.factor_breakdown)
+        drivers = [Driver(**d) for d in explanation.factor_breakdown]
+        if n_drivers == 1:
+            lede += "the chief-complaint rule alone. "
+        else:
+            drivers.sort(key=lambda d: d.contribution_pct, reverse=True)
+            contributors = []
+            for driver in drivers:
+                contributors.append(driver.threshold if driver.factor == "Chief complaint" else driver.factor)
+            
+            if n_drivers == 2:
+                lede += f"{n_drivers - 1} vital-sign rule and the chief-complaint rule. The largest contributor is {contributors[0]}; {contributors[1]} adds to the total. "
+            else:
+                lede += f"{n_drivers - 1} vital-sign rules and the chief-complaint rule. The largest contributor is {contributors[0]}; {", ".join(contributors[1:])} add to the total. "
+
+        if explanation.data_completeness == f"{TOTAL_VITALS} of {TOTAL_VITALS}":
+            coverage_clause = "All required vitals provided."
+        else:
+            coverage_clause = f"{explanation.data_completeness} vitals scored - "
+            fallbacks = []
+
+            assumed = []
+            for field in explanation.gaps["assumed"]:
+                assumed.append(VITAL_RENDER[field])
+            if len(assumed) > 0:
+                fallbacks.append(f"{", ".join(assumed)} assumed")
+
+            missing = []
+            for field in explanation.gaps["not_provided"]:
+                missing.append(VITAL_RENDER[field])
+            if len(missing) > 0:
+                fallbacks.append(f"{", ".join(missing)} missing")
+
+            coverage_clause += f"{"; ".join(fallbacks)}."
+
+        return lede + coverage_clause

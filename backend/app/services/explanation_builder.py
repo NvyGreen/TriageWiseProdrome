@@ -19,13 +19,6 @@ from ..utils.vitals import VITAL_MAP
 
 BEYOND_THE_DATA = "Appearance, work of breathing, distress, social context, staffing - outside this engine."
 ALL_VITALS = {"heart_rate", "blood_pressure_systolic", "blood_pressure_diastolic", "temperature", "oxygen_saturation", "respiration_rate", "pain_level", "blood_sugar"}
-LABEL_MAP = {
-    "ESI-1": "Critical",
-    "ESI-2": "Emergent",
-    "ESI-3": "Urgent",
-    "ESI-4": "Less urgent",
-    "ESI-5": "Non-urgent"
-}
 
 RULE_FIELDS = set(VITAL_MAP.values())
 RULE_FIELDS.add("chief_complaint")
@@ -77,38 +70,7 @@ class ExplanationBuilder:
             gaps["red_flag_input"].append(f"Vitals: {", ".join(sorted(red_flag_vitals))}")
 
         # Generate explanation text
-        if len(severityResult.missing_fields) == 0:
-            coverage_clause = "All required vitals provided."
-        else:
-            coverage_clause = f"{severityResult.data_completeness} vitals scored - "
-            not_covered = []
-            if len(gaps["assumed"]) > 0:
-                assumed_normal = []
-                assumed_zero = []
-                for field in gaps["assumed"]:
-                    if severityResult.fallbacks_applied[field] == "assume_normal":
-                        assumed_normal.append(field)
-                    elif severityResult.fallbacks_applied[field] == "assume_zero":
-                        assumed_zero.append(field)
-
-                if len(assumed_normal) > 0:
-                    not_covered.append(",".join(assumed_normal))
-                if len(assumed_zero) > 0:
-                    not_covered.append(",".join(assumed_zero))
-
-            if len(gaps["not_provided"]) > 0:
-                not_covered.append(",".join(gaps["not_provided"]))
-            coverage_clause += f"{";".join(not_covered)}."
-
-        sorted_drivers = sorted(severityResult.named_drivers, key=lambda d: d.contribution_pct, reverse=True)
-        chief_complaint_only = len(severityResult.named_drivers) - 1 == 0
-
-        explanation_text = f"This patient scored {severityResult.severity_score} points -> {severityResult.esi_level} ({LABEL_MAP[severityResult.esi_level]}) "
-        if chief_complaint_only:
-            explanation_text += "from the chief complaint rule alone. "
-        else:
-            explanation_text += f"from {len(severityResult.named_drivers) - 1} vital-sign rule(s) and the chief-complaint rule. The largest contributor is rule {sorted_drivers[0].rule_id}; rule(s) {", ".join(str(d.rule_id) for d in sorted_drivers[1:])} add(s) to the total. "
-        explanation_text += coverage_clause
+        explanation_text = f"Confidence: {severityResult.confidence}. This is a triage aid, not a diagnosis. Clinician judgement required."
 
         try:
             stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake.intake_id)

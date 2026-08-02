@@ -1,0 +1,311 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — lede rendering cases (req 1.9)",
+    "validates": "The lede render step (in getPatientDetail / TriageService) — structured stored data -> the summary sentence(s) at the top of the patient detail. Deterministic: same inputs -> identical text.",
+    "nature": "The lede is built at read time from STORED data, NOT from a live SeverityResult. Inputs mirror what getPatientDetail actually reads: patient_severity fields + ai_explanation.factor_breakdown + ai_explanation.data_completeness.",
+    "how_to_use": "For each case: feed inputs to _render_lede, assert the output EQUALS expected_lede exactly (deterministic). Component fields (score, esi, band_name, n_vital, vital_clause) are provided for targeted assertions but expected_lede is the source of truth.",
+    "inputs_shape": {
+      "from_patient_severity": "severity_score (int), system_ESI (e.g. 'ESI-3'), fallbacks_applied (list; read for the non-5/5 tail)",
+      "from_ai_explanation": "factor_breakdown (list[Driver dicts]) + data_completeness + gaps (dict; the non-5/5 coverage tail reads gaps['assumed'] / gaps['not_provided'])",
+      "derived": "band_name via ESI->label map; n_vital = len(factor_breakdown) - 1 (exactly one complaint driver always present)"
+    },
+    "band_label_map": {
+      "ESI-1": "Critical",
+      "ESI-2": "Emergent",
+      "ESI-3": "Urgent",
+      "ESI-4": "Less urgent",
+      "ESI-5": "Non-urgent"
+    },
+    "conventions": [
+      "n_vital = len(factor_breakdown) - 1 (one complaint driver always fires).",
+      "vital clause uses DIGITS: n_vital==1 -> '1 vital-sign rule'; n_vital>=2 -> '{n} vital-sign rules'; n_vital==0 -> 'the chief-complaint rule alone.' (no vital clause).",
+      "largest-contributor clause (n_drivers>=2): drivers sorted by contribution_pct desc; the chief-complaint driver renders its THRESHOLD (readable phrase, e.g. 'shortness of breath'), vitals render their FACTOR. '{top}; {rest} add(s) to the total.'",
+      "band_name from LABEL_MAP (ESI-1 Critical ... ESI-5 Non-urgent).",
+      "coverage: data_completeness=='5 of 5' -> 'All required vitals provided.'; else '{dc} vitals scored - {groups}.' where groups are '; '-joined, each group ', '-joined VITAL_RENDER display names, order: assumed group then missing group, empty groups omitted.",
+      "VITAL_RENDER maps column->display: oxygen_saturation->SpO2, heart_rate->Heart rate, respiration_rate->Respiratory rate, blood_pressure_systolic->Systolic BP, pain_level->Pain score, temperature->Temperature, blood_pressure_diastolic->Diastolic BP, blood_sugar->Blood sugar.",
+      "assumed vs missing: gaps['assumed'] render as '... assumed'; gaps['not_provided'] as '... missing'. Both assume_normal and assume_zero live in gaps['assumed'] and render identically as 'assumed'."
+    ]
+  },
+  "cases": [
+    {
+      "_name": "one_vital_rule_singular",
+      "_why": "n_vital = 1 (2 drivers - 1 complaint) must render singular 'one vital-sign rule'. Maria case.",
+      "inputs": {
+        "severity_score": 5,
+        "system_ESI": "ESI-3",
+        "data_completeness": "2 of 5",
+        "factor_breakdown": [
+          {
+            "rule_id": 10,
+            "factor": "Chief complaint",
+            "threshold": "shortness of breath",
+            "weight": 4,
+            "patient_value": "respiratory",
+            "contribution_pct": 80
+          },
+          {
+            "rule_id": 4,
+            "factor": "Heart rate",
+            "threshold": "100-120 bpm",
+            "weight": 1,
+            "patient_value": 110,
+            "contribution_pct": 20
+          }
+        ],
+        "gaps": {
+          "assumed": [
+            "oxygen_saturation"
+          ],
+          "not_provided": [
+            "respiration_rate",
+            "blood_pressure_systolic"
+          ]
+        },
+        "fallbacks_applied": [
+          {
+            "field": "oxygen_saturation",
+            "action": "assume_normal"
+          },
+          {
+            "field": "respiration_rate",
+            "action": "skip_rule"
+          },
+          {
+            "field": "blood_pressure_systolic",
+            "action": "skip_rule"
+          }
+        ]
+      },
+      "expect": {
+        "score": 5,
+        "esi": "ESI-3",
+        "band_name": "Urgent",
+        "n_vital": 1,
+        "vital_clause": "1 vital-sign rule",
+        "deterministic": true,
+        "expected_lede": "This patient scored 5 points -> ESI-3 (Urgent) from 1 vital-sign rule and the chief-complaint rule. The largest contributor is shortness of breath; Heart rate adds to the total. 2 of 5 vitals scored - SpO2 assumed; Respiratory rate, Systolic BP missing."
+      }
+    },
+    {
+      "_name": "multiple_vital_rules_plural",
+      "_why": "n_vital = 4 (5 drivers - 1 complaint) must render 'four vital-sign rules' (plural, spelled). Robert case.",
+      "inputs": {
+        "severity_score": 14,
+        "system_ESI": "ESI-1",
+        "data_completeness": "5 of 5",
+        "factor_breakdown": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "threshold": "chest pain (cardiac concern)",
+            "weight": 6,
+            "patient_value": "cardiac",
+            "contribution_pct": 43
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "threshold": "> 120 bpm",
+            "weight": 3,
+            "patient_value": 128,
+            "contribution_pct": 21
+          },
+          {
+            "rule_id": 1,
+            "factor": "SpO2",
+            "threshold": "< 92%",
+            "weight": 4,
+            "patient_value": 89,
+            "contribution_pct": 29
+          },
+          {
+            "rule_id": 5,
+            "factor": "Respiratory rate",
+            "threshold": "> 24 /min",
+            "weight": 1,
+            "patient_value": 26,
+            "contribution_pct": 7
+          }
+        ]
+      },
+      "expect": {
+        "score": 14,
+        "esi": "ESI-1",
+        "band_name": "Critical",
+        "n_vital": 3,
+        "vital_clause": "3 vital-sign rules",
+        "deterministic": true,
+        "expected_lede": "This patient scored 14 points -> ESI-1 (Critical) from 3 vital-sign rules and the chief-complaint rule. The largest contributor is chest pain (cardiac concern); SpO2, Heart rate, Respiratory rate add to the total. All required vitals provided."
+      }
+    },
+    {
+      "_name": "complaint_only_no_vital_clause",
+      "_why": "n_vital = 0 (1 driver, complaint only). No vital clause at all — 'from the chief-complaint rule' alone.",
+      "inputs": {
+        "severity_score": 6,
+        "system_ESI": "ESI-2",
+        "data_completeness": "0 of 5",
+        "factor_breakdown": [
+          {
+            "rule_id": 8,
+            "factor": "Chief complaint",
+            "threshold": "stroke symptoms (FAST)",
+            "weight": 6,
+            "patient_value": "stroke",
+            "contribution_pct": 100
+          }
+        ],
+        "gaps": {
+          "assumed": [
+            "oxygen_saturation",
+            "pain_level"
+          ],
+          "not_provided": [
+            "heart_rate",
+            "respiration_rate",
+            "blood_pressure_systolic"
+          ]
+        },
+        "fallbacks_applied": [
+          {
+            "field": "oxygen_saturation",
+            "action": "assume_normal"
+          },
+          {
+            "field": "heart_rate",
+            "action": "skip_rule"
+          },
+          {
+            "field": "respiration_rate",
+            "action": "skip_rule"
+          },
+          {
+            "field": "blood_pressure_systolic",
+            "action": "skip_rule"
+          },
+          {
+            "field": "pain_level",
+            "action": "assume_zero"
+          }
+        ]
+      },
+      "expect": {
+        "score": 6,
+        "esi": "ESI-2",
+        "band_name": "Emergent",
+        "n_vital": 0,
+        "vital_clause": null,
+        "deterministic": true,
+        "expected_lede": "This patient scored 6 points -> ESI-2 (Emergent) from the chief-complaint rule alone. 0 of 5 vitals scored - SpO2, Pain score assumed; Heart rate, Respiratory rate, Systolic BP missing."
+      }
+    },
+    {
+      "_name": "two_vital_rules_plural",
+      "_why": "n_vital = 2 (3 drivers - 1) -> 'two vital-sign rules'. Checks the spelled plural for the common case.",
+      "inputs": {
+        "severity_score": 9,
+        "system_ESI": "ESI-1",
+        "data_completeness": "5 of 5",
+        "factor_breakdown": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "threshold": "chest pain (cardiac concern)",
+            "weight": 6,
+            "patient_value": "cardiac",
+            "contribution_pct": 67
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "threshold": "> 120 bpm",
+            "weight": 3,
+            "patient_value": 124,
+            "contribution_pct": 33
+          },
+          {
+            "rule_id": 1,
+            "factor": "SpO2",
+            "threshold": "92-94%",
+            "weight": 2,
+            "patient_value": 93,
+            "contribution_pct": 0
+          }
+        ]
+      },
+      "expect": {
+        "score": 9,
+        "esi": "ESI-1",
+        "band_name": "Critical",
+        "n_vital": 2,
+        "vital_clause": "2 vital-sign rules",
+        "deterministic": true,
+        "expected_lede": "This patient scored 9 points -> ESI-1 (Critical) from 2 vital-sign rules and the chief-complaint rule. The largest contributor is chest pain (cardiac concern); Heart rate, SpO2 add to the total. All required vitals provided."
+      }
+    },
+    {
+      "_name": "band_name_urgent_esi3",
+      "_why": "Band label map: ESI-3 -> Urgent. Guards the ESI->name derivation independently.",
+      "inputs": {
+        "severity_score": 4,
+        "system_ESI": "ESI-3",
+        "data_completeness": "5 of 5",
+        "factor_breakdown": [
+          {
+            "rule_id": 12,
+            "factor": "Chief complaint",
+            "threshold": "abdominal pain",
+            "weight": 3,
+            "patient_value": "abdominal",
+            "contribution_pct": 75
+          },
+          {
+            "rule_id": 4,
+            "factor": "Heart rate",
+            "threshold": "100-120 bpm",
+            "weight": 1,
+            "patient_value": 105,
+            "contribution_pct": 25
+          }
+        ]
+      },
+      "expect": {
+        "score": 4,
+        "esi": "ESI-3",
+        "band_name": "Urgent",
+        "n_vital": 1,
+        "vital_clause": "1 vital-sign rule",
+        "deterministic": true,
+        "expected_lede": "This patient scored 4 points -> ESI-3 (Urgent) from 1 vital-sign rule and the chief-complaint rule. The largest contributor is abdominal pain; Heart rate adds to the total. All required vitals provided."
+      }
+    },
+    {
+      "_name": "band_name_nonurgent_esi5",
+      "_why": "ESI-5 -> Non-urgent, the least-acute label. Complaint-only, n_vital 0.",
+      "inputs": {
+        "severity_score": 0,
+        "system_ESI": "ESI-5",
+        "data_completeness": "5 of 5",
+        "factor_breakdown": [
+          {
+            "rule_id": 14,
+            "factor": "Chief complaint",
+            "threshold": "minor complaint",
+            "weight": 0,
+            "patient_value": "minor_general",
+            "contribution_pct": 0
+          }
+        ]
+      },
+      "expect": {
+        "score": 0,
+        "esi": "ESI-5",
+        "band_name": "Non-urgent",
+        "n_vital": 0,
+        "vital_clause": null,
+        "deterministic": true,
+        "expected_lede": "This patient scored 0 points -> ESI-5 (Non-urgent) from the chief-complaint rule alone. All required vitals provided."
+      }
+    }
+  ]
+}

@@ -451,6 +451,7 @@ class TriageService:
                 arrival_by_ambulance=intake.arrival_by_ambulance,
                 recent_ed_visit_72h=intake.recent_ed_visit_72h,
                 injury_related=intake.injury_related,
+                notes=intake.notes,
                 created_at=intake.created_at
             )
 

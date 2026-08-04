@@ -27,6 +27,7 @@ class IntakeRecord(Base):
     recent_ed_visit_72h = Column(Boolean)
     injury_related = Column(Boolean)
     respiration_rate = Column(Integer)
+    notes = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

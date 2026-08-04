@@ -21,4 +21,5 @@ class IntakeInfo(BaseModel):
     arrival_by_ambulance: bool | None = None
     recent_ed_visit_72h: bool | None = None
     injury_related: bool | None = None
+    notes: str | None = None
     created_at: datetime

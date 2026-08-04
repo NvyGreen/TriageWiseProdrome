@@ -26,6 +26,7 @@ class IntakeCreate(BaseModel):
     recent_ed_visit_72h: bool | None = None
     injury_related: bool | None = None
     source: str = Field(default="form", max_length=10)
+    notes: str | None = None
 
     @field_validator("date_of_birth")
     @classmethod

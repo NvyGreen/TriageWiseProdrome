@@ -35,3 +35,16 @@ def update_patient(intake_id: int, updates: IntakeUpdate, queue: PriorityQueue =
         raise HTTPException(status_code=500) from e
     
     return response_body
+
+@router.get("/{intake_id}", status_code=status.HTTP_200_OK)
+def patient_details(intake_id: int, db: Session = Depends(get_db)):
+    triageService = TriageService(db)
+    details = triageService.getPatientDetail(intake_id)
+    try:
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.exception("Getting patient details failed")
+        raise HTTPException(status_code=500) from e
+    
+    return details

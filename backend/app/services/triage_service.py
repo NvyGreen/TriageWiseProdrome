@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.exceptions import HTTPException, RequestValidationError
+from pydantic import ValidationError
 
 from ..models.patient import Patient
 from ..models.intake_record import IntakeRecord
@@ -14,9 +15,14 @@ from ..models.esi_band import ESIBand
 from ..models.event_log import EventLog
 from ..models.case_update import CaseUpdate
 from ..models.ai_explanation import AIExplanation
+from ..models.red_flag_rule import RedFlagRule
 
 from ..schemas.intake_create import IntakeCreate
 from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
+from ..schemas.patient_info import PatientInfo
+from ..schemas.intake_info import IntakeInfo
+from ..schemas.severity_info import SeverityInfo
+from ..schemas.trigger_info import TriggerInfo
 
 from ..services.priority_queue import PriorityQueue
 from ..services.scoring_engine import ScoringEngine, CannotScoreError
@@ -27,6 +33,9 @@ from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
 from ..utils.severity_result import SeverityResult
 from ..utils.driver import Driver
+from ..utils.patient_detail import PatientDetail
+from ..utils.explanation import Explanation
+from ..utils.trigger import Trigger
 from ..utils.dates import age_in_years
 from ..utils.vitals import VITAL_MAP, TOTAL_VITALS
 
@@ -390,6 +399,17 @@ class TriageService:
 
     def getPatientDetail(self, intake_id: int):
         try:
+            intake = self.db.get(IntakeRecord, intake_id)
+            if intake is None:
+                logger.error(f"Intake {intake_id} not found")
+                raise IntakeNotFoundError(intake_id)
+
+            stmt = select(Patient).where(Patient.patient_id == intake.patient_id)
+            patient = self.db.scalar(stmt)
+            if patient is None:
+                logger.error("Patient was none when it shouldn't be")
+                raise HTTPException(status_code=500)
+
             stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
             severity = self.db.scalar(stmt)
             if severity is None:
@@ -397,17 +417,111 @@ class TriageService:
                 raise HTTPException(status_code=500)
 
             stmt = select(AIExplanation).where(AIExplanation.intake_id == intake_id)
-            explanation = self.db.scalar(stmt)
-            if explanation is None:
+            ai_explanation = self.db.scalar(stmt)
+            if ai_explanation is None:
                 logger.error("Explanation was none when it shouldn't be")
                 raise HTTPException(status_code=500)
         except SQLAlchemyError as e:
-            logger.exception("patient_severity retrieval failed")
+            logger.exception("Getting objects for PatientDetail failed")
             raise HTTPException(status_code=500) from e
 
-        lede = self._render_lede(severity, explanation)
-        # TODO: This should return a more detailed breakdown, not just the lede
-        return lede
+        try:
+            patient_info = PatientInfo(
+                patient_id=patient.patient_id,
+                name=patient.name,
+                date_of_birth=patient.date_of_birth,
+                sex=patient.sex
+            )
+
+            intake_info = IntakeInfo(
+                intake_id=intake_id,
+                symptoms=intake.symptoms,
+                chief_complaint=intake.chief_complaint,
+                heart_rate=intake.heart_rate,
+                blood_pressure_systolic=intake.blood_pressure_systolic,
+                blood_pressure_diastolic=intake.blood_pressure_diastolic,
+                temperature=intake.temperature,
+                oxygen_saturation=intake.oxygen_saturation,
+                respiration_rate=intake.respiration_rate,
+                pain_level=intake.pain_level,
+                blood_sugar=intake.blood_sugar,
+                missing_fields=intake.missing_fields,
+                pregnancy_status=intake.pregnancy_status,
+                pre_existing_conditions=intake.pre_existing_conditions,
+                arrival_by_ambulance=intake.arrival_by_ambulance,
+                recent_ed_visit_72h=intake.recent_ed_visit_72h,
+                injury_related=intake.injury_related,
+                created_at=intake.created_at
+            )
+
+            severity_info = SeverityInfo(
+                severity_id=severity.severity_id,
+                severity_score=severity.severity_score,
+                system_ESI=severity.system_ESI,
+                clinician_ESI=severity.clinician_ESI,
+                score_reason=severity.score_reason,
+                fallbacks_applied=severity.fallbacks_applied,
+                confidence=severity.confidence,
+                flag_tier=severity.flag_tier,
+                created_at=severity.created_at
+            )
+        except ValidationError as e:
+            logger.exception("Creating Info objects failed")
+            raise HTTPException(status_code=500) from e
+
+        explanation = Explanation(
+            ai_explanation.data_completeness,
+            [Driver(**d) for d in ai_explanation.factor_breakdown],
+            ai_explanation.gaps
+        )
+
+        try:
+            triggers: list[TriggerInfo] = []
+            flag_ids = [flag['flag_id'] for flag in severity.red_flags]
+            stmt = select(RedFlagRule).where(RedFlagRule.flag_id.in_(flag_ids))
+            flag_rules = self.db.scalars(stmt).all()
+            if len(flag_rules) != len(flag_ids):
+                logger.error("Number of flag rules does not match with number of flag ids")
+                raise HTTPException(status_code=500)
+            
+            for flag_rule in flag_rules:                
+                trigger = TriggerInfo(
+                    flag_id=flag_rule.flag_id,
+                    flag_type=flag_rule.flag_type,
+                    flag_tier=flag_rule.flag_tier,
+                    message=flag_rule.message,
+                    rationale=flag_rule.rationale
+                )
+                triggers.append(trigger)
+        except (SQLAlchemyError, ValidationError) as e:
+            logger.exception("Creating Triggers failed")
+            raise HTTPException(status_code=500) from e
+
+        lede = self._render_lede(severity, ai_explanation)
+
+        try:
+            explanation_viewed = EventLog(
+                event_type=EventType.EXPLANATION_VIEWED,
+                patient_id=patient.patient_id,
+                intake_id=intake_id,
+                details={'explanation_id': ai_explanation.explanation_id}
+            )
+            self.db.add(explanation_viewed)
+            self.db.flush()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.exception("Logging event failed")
+            raise HTTPException(status_code=500) from e
+
+        return PatientDetail(
+            patient=patient_info,
+            intake=intake_info,
+            missing_fields=intake_info.missing_fields,
+            severity=severity_info,
+            explanation=explanation,
+            red_flags=triggers,
+            lede=lede
+        )
 
 
     def _render_lede(self, severity: PatientSeverity, explanation: AIExplanation) -> str:

@@ -1,12 +1,15 @@
 import logging
-from fastapi import APIRouter, Depends, status
+from typing import Annotated, Literal
+from fastapi import APIRouter, Depends, status, Query
 from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from ..dependencies import get_queue, get_db
+from ..models.event_log import EventLog
 from ..schemas.intake_update import IntakeUpdate
+from ..schemas.patient_detail_out import PatientDetailOut
 from ..services.priority_queue import PriorityQueue
-from ..services.triage_service import TriageService
+from ..services.triage_service import TriageService, EventType
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,14 +40,22 @@ def update_patient(intake_id: int, updates: IntakeUpdate, queue: PriorityQueue =
     return response_body
 
 @router.get("/{intake_id}", status_code=status.HTTP_200_OK)
-def patient_details(intake_id: int, db: Session = Depends(get_db)):
+def patient_details(intake_id: int, mode: Annotated[Literal['xai', 'blackbox'], Query()], db: Session = Depends(get_db)):
     triageService = TriageService(db)
     details = triageService.getPatientDetail(intake_id)
     try:
+        if mode == 'xai':
+            explanation_viewed = EventLog(
+                event_type=EventType.EXPLANATION_VIEWED,
+                patient_id=details.patient.patient_id,
+                intake_id=intake_id
+            )
+            db.add(explanation_viewed)
+            db.flush()
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
         logger.exception("Getting patient details failed")
         raise HTTPException(status_code=500) from e
     
-    return details
+    return PatientDetailOut.from_detail(details, mode).model_dump(exclude_none=True)

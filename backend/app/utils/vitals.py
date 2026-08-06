@@ -7,3 +7,11 @@ VITAL_MAP = {
 }
 
 TOTAL_VITALS = 5
+
+LABEL_MAP = {
+    "ESI-1": "Critical",
+    "ESI-2": "Emergent",
+    "ESI-3": "Urgent",
+    "ESI-4": "Less urgent",
+    "ESI-5": "Non-urgent"
+}

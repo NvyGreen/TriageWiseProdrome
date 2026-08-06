@@ -27,6 +27,7 @@ from sqlalchemy import update
 
 from app.dependencies import get_queue
 from app.main import intakes_app
+from app.models.ai_explanation import AIExplanation
 from app.models.case_update import CaseUpdate
 from app.models.event_log import EventLog
 from app.models.intake_record import IntakeRecord
@@ -40,6 +41,9 @@ from app.services.triage_service import EventType
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "update_test_cases.json").read_text(encoding="utf-8"))
+DETAIL_CASES = json.loads(
+    (UNIT_CASES / "patient_detail_test_cases.json").read_text(encoding="utf-8")
+)["endpoint_cases"]
 
 def _at(hhmm: str) -> datetime:
     """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
@@ -345,3 +349,131 @@ def test_clinical_update_raises_esi(client, db_session, queue_override):
     assert _case_updates(db_session, target_id)
     assert len(_events(db_session, target_id, EventType.CASE_UPDATED)) == 1
     assert len(_events(db_session, target_id, EventType.REPRIORITIZED)) == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /intakes/{id}?mode=... — patient detail response (layer B of
+# patient_detail_test_cases.json). Asserts the EMITTED JSON: response casing
+# (system_esi), DriverOut dicts, fields ABSENT (not null) when stripped, and the
+# explanation_viewed event (route fires it in xai only). The domain-object layer
+# lives in test_patient_detail.py. Success bodies are wrapped under "payload" by
+# MedicalDisclaimerResponse; errors render the envelope as-is.
+# ---------------------------------------------------------------------------
+DETAIL_OVERRIDE_CASE = "ep_xai_override_present"
+
+
+def _detail_param(case):
+    marks = (
+        [pytest.mark.xfail(reason="override composition not implemented; PatientDetail.override is hardcoded None")]
+        if case["_name"] == DETAIL_OVERRIDE_CASE
+        else []
+    )
+    return pytest.param(case, id=case["_name"], marks=marks)
+
+
+def _seed_detail(db_session, seed):
+    """Seed patient + intake + severity + ai_explanation; return the real intake_id.
+
+    Committed so the endpoint's own get_db session sees the rows. PKs autoincrement
+    (the JSON's ids are ignored) so re-runs can't collide.
+    """
+    p = seed["patient"]
+    patient = Patient(
+        name=p["name"], date_of_birth=date.fromisoformat(p["date_of_birth"]), sex=p["sex"]
+    )
+    db_session.add(patient)
+    db_session.flush()
+
+    ir = seed["intake_record"]
+    intake = IntakeRecord(
+        patient_id=patient.patient_id,
+        chief_complaint=ir["chief_complaint"],
+        missing_fields=ir["missing_fields"],
+        pregnancy_status="none",  # IntakeInfo.pregnancy_status is a required enum
+    )
+    db_session.add(intake)
+    db_session.flush()
+
+    ps = seed["patient_severity"]
+    db_session.add(
+        PatientSeverity(
+            intake_id=intake.intake_id,
+            severity_score=ps["severity_score"],
+            system_ESI=ps["system_ESI"],
+            clinician_ESI=ps["clinician_ESI"],
+            score_reason="seed",
+            confidence=ps["confidence"],
+            red_flags=ps["red_flags"],
+            red_flag_fired=ps["red_flag_fired"],
+            flag_tier=ps["flag_tier"],
+        )
+    )
+    db_session.flush()
+    severity = (
+        db_session.query(PatientSeverity)
+        .filter(PatientSeverity.intake_id == intake.intake_id)
+        .one()
+    )
+
+    ax = seed["ai_explanation"]
+    db_session.add(
+        AIExplanation(
+            severity_id=severity.severity_id,
+            intake_id=intake.intake_id,
+            explanation_text="seed",
+            factor_breakdown=ax["factor_breakdown"],
+            data_completeness=ax["data_completeness"],
+            gaps=ax["gaps"],
+        )
+    )
+    db_session.commit()
+    return intake.intake_id
+
+
+@pytest.mark.parametrize("case", [_detail_param(c) for c in DETAIL_CASES])
+def test_patient_detail_endpoint(case, client, db_session):
+    call = case["call"]
+    expect = case["expect"]
+
+    # Unseeded cases (the 404) call a fixed missing id; seeded cases use the real
+    # autoincremented id, not the JSON's fabricated one.
+    intake_id = _seed_detail(db_session, case["seed"]) if case["seed"] else call["intake_id"]
+
+    url = f"/intakes/{intake_id}"
+    if "mode" in call:
+        url += f"?mode={call['mode']}"
+    resp = client.get(url)
+
+    assert resp.status_code == expect["status_code"]
+
+    if "error_code" in expect:
+        assert resp.json()["error"]["code"] == expect["error_code"]
+
+    if expect["status_code"] == 200:
+        body = resp.json()["payload"]
+
+        for field in expect.get("fields_present", []):
+            assert field in body, field
+        for field in expect.get("fields_absent", []):
+            assert field not in body, field
+
+        if "system_esi" in expect:
+            assert body["system_esi"] == expect["system_esi"]
+        if "band_name" in expect:
+            assert body["band_name"] == expect["band_name"]
+        # severity_score may serialize as float (9.0) — assert numeric equality.
+        if "severity_score_equals" in expect:
+            assert body["severity_score"] == expect["severity_score_equals"]
+        if "explanation_driver_count" in expect:
+            assert len(body["explanation"]["named_drivers"]) == expect["explanation_driver_count"]
+        if expect.get("drivers_are_dicts"):
+            assert all(isinstance(d, dict) for d in body["explanation"]["named_drivers"])
+        if "override_reason_code" in expect:
+            assert body["override"]["reason_code"] == expect["override_reason_code"]
+
+    # explanation_viewed fires in the route, xai branch only.
+    viewed = _events(db_session, intake_id, EventType.EXPLANATION_VIEWED)
+    if expect.get("event_logged") == "explanation_viewed":
+        assert len(viewed) == 1
+    if expect.get("no_event_logged"):
+        assert len(viewed) == 0

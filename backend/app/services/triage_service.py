@@ -37,18 +37,10 @@ from ..utils.patient_detail import PatientDetail
 from ..utils.explanation import Explanation
 from ..utils.trigger import Trigger
 from ..utils.dates import age_in_years
-from ..utils.vitals import VITAL_MAP, TOTAL_VITALS
+from ..utils.vitals import VITAL_MAP, TOTAL_VITALS, LABEL_MAP
 
 
 logger = logging.getLogger(__name__)
-
-LABEL_MAP = {
-    "ESI-1": "Critical",
-    "ESI-2": "Emergent",
-    "ESI-3": "Urgent",
-    "ESI-4": "Less urgent",
-    "ESI-5": "Non-urgent"
-}
 
 VITAL_RENDER = {v: k for k, v in VITAL_MAP.items()}
 VITAL_RENDER["temperature"] = "Temperature"
@@ -499,21 +491,6 @@ class TriageService:
             raise HTTPException(status_code=500) from e
 
         lede = self._render_lede(severity, ai_explanation)
-
-        try:
-            explanation_viewed = EventLog(
-                event_type=EventType.EXPLANATION_VIEWED,
-                patient_id=patient.patient_id,
-                intake_id=intake_id,
-                details={'explanation_id': ai_explanation.explanation_id}
-            )
-            self.db.add(explanation_viewed)
-            self.db.flush()
-        except SQLAlchemyError as e:
-            self.db.rollback()
-            logger.exception("Logging event failed")
-            raise HTTPException(status_code=500) from e
-
         return PatientDetail(
             patient=patient_info,
             intake=intake_info,

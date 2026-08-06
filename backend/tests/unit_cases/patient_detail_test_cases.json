@@ -1,42 +1,90 @@
 {
   "_meta": {
-    "title": "TriageWiseProdrome — getPatientDetail composition cases (reqs getPatientDetail / detail endpoint; D1 surface)",
-    "validates": "TriageService.getPatientDetail(intake_id) assembles a PatientDetail from STORED rows, and GET /intakes/{id} returns it. Composition + rehydration + endpoint contract — NOT the lede text (see lede_test_cases.json) or the Explanation content (see explanation_test_cases.json).",
-    "nature": "INTEGRATION, not pure-function. Each case seeds DB rows (patient, intake_record, patient_severity, ai_explanation, optionally override), calls getPatientDetail / the endpoint, and asserts the assembled bundle. There is no scoring here — the rows are pre-seeded to isolate composition.",
-    "scope_notes": [
-      "Mode toggle (xai/blackbox) is R1 — NOT tested here. These cases assume full (xai) assembly: all fields populated.",
-      "The lede STRING is asserted in lede_test_cases.json; here we only assert that PatientDetail.lede is present/non-empty.",
-      "Explanation field VALUES are asserted in explanation_test_cases.json; here we only assert the Explanation is attached and rehydrated (drivers are Driver objects, gaps has 5 keys).",
-      "explanation_viewed event: getPatientDetail fires it in xai mode. Asserted here as a side effect."
+    "title": "TriageWiseProdrome — patient detail cases (getPatientDetail + GET /intakes/{id}, reqs detail endpoint / R1 mode / D1 surface)",
+    "validates": "Two SEPARATE layers, tested independently: (A) SERVICE composition — TriageService.getPatientDetail(intake_id) assembles a PatientDetail domain object from stored rows; (B) ENDPOINT response — GET /intakes/{id}?mode=... emits PatientDetailOut JSON, with black-box stripping.",
+    "nature": "INTEGRATION. Seed rows, then either call the service (layer A) OR hit the endpoint (layer B). Each case targets ONE layer — never mixes domain-object assertions with emitted-JSON assertions.",
+    "layer_key": {
+      "service": "assert on the PatientDetail OBJECT: domain types (Driver/Trigger objects), domain attr casing (system_ESI), missing_fields present, override=None when absent. No status_code, no event (the service alone logs nothing).",
+      "endpoint": "assert on the emitted JSON from PatientDetailOut.model_dump(exclude_none=True): response casing (system_esi), DriverOut/RedFlagOut DICTS (not domain types), fields ABSENT (not null) when stripped, status_code, explanation_viewed event (route fires it in xai only)."
+    },
+    "notes": [
+      "band_name derived via LABEL_MAP from ESI.",
+      "severity_score may serialize as float (e.g. 9.0) if the column is float — endpoint cases assert numeric equality, not int identity.",
+      "exclude_none: a stripped OR genuinely-absent field is OMITTED from JSON, never null.",
+      "explanation_viewed fires in the ROUTE, xai branch only — so it's an endpoint-layer assertion, never a service-layer one.",
+      "mode is a required query param - a request without it fails validation and returns 400 invalid_input (the app normalizes all validation errors to 400, not 422)."
     ],
-    "patient_detail_shape": {
-      "patient": "Patient (name, dob->age, sex)",
-      "intake": "IntakeRecord",
-      "missingFields": "list[str]",
-      "severity": "PatientSeverity row (severity_score, system_ESI, clinician_ESI, confidence, red_flags, flag_tier)",
-      "explanation": "Explanation (rehydrated: named_drivers as Driver objects, gap_acknowledgement dict with 5 keys, data_completeness, fallback_instruction)",
-      "lede": "str (composed via _render_lede; non-empty)",
-      "redFlags": "list[Trigger] rehydrated from patient_severity.red_flags JSONB",
-      "override": "Override or null"
+    "band_label_map": {
+      "ESI-1": "Critical",
+      "ESI-2": "Emergent",
+      "ESI-3": "Urgent",
+      "ESI-4": "Less urgent",
+      "ESI-5": "Non-urgent"
     }
   },
-
-  "cases": [
+  "service_cases": [
     {
-      "_name": "full_bundle_no_flags_no_override",
-      "_why": "Baseline: a scored patient with no red flags and no override. Every field composes; redFlags empty, override null.",
+      "_name": "svc_full_bundle_composes",
+      "_why": "getPatientDetail assembles every field from stored rows: patient, severity, explanation (drivers rehydrated to Driver objects), lede present, no flags, override None.",
       "seed": {
-        "patient": {"patient_id": 100, "name": "Test Patient A", "date_of_birth": "1970-04-10", "sex": "F"},
-        "intake_record": {"intake_id": 5001, "patient_id": 100, "chief_complaint": "cardiac", "missing_fields": []},
-        "patient_severity": {"intake_id": 5001, "severity_score": 9, "system_ESI": "ESI-1", "clinician_ESI": null, "confidence": "HIGH", "red_flags": [], "red_flag_fired": false, "flag_tier": 3},
-        "ai_explanation": {"intake_id": 5001, "data_completeness": "5 of 5", "factor_breakdown": [
-          {"rule_id": 9, "factor": "Chief complaint", "threshold": "chest pain (cardiac concern)", "weight": 6, "patient_value": "cardiac", "contribution_pct": 67},
-          {"rule_id": 3, "factor": "Heart rate", "threshold": "> 120 bpm", "weight": 3, "patient_value": 124, "contribution_pct": 33}
-        ], "gaps": {"not_provided": [], "assumed": [], "recorded_not_scored": [], "red_flag_input": [], "beyond_the_data": ["Appearance, work of breathing, distress, social context, staffing - outside this engine."]}}
+        "patient": {
+          "patient_id": 100,
+          "name": "Test Patient A",
+          "date_of_birth": "1970-04-10",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5001,
+          "patient_id": 100,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5001,
+          "severity_score": 9,
+          "system_ESI": "ESI-1",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5001,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 67
+            },
+            {
+              "rule_id": 3,
+              "factor": "Heart rate",
+              "threshold": "> 120 bpm",
+              "weight": 3,
+              "patient_value": 124,
+              "contribution_pct": 33
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
       },
-      "call": {"intake_id": 5001},
+      "call": {
+        "intake_id": 5001
+      },
       "expect": {
-        "status_code": 200,
         "patient_name": "Test Patient A",
         "severity_score": 9,
         "system_ESI": "ESI-1",
@@ -44,92 +92,698 @@
         "confidence": "HIGH",
         "driver_count": 2,
         "drivers_are_Driver_objects": true,
-        "gap_keys_present": ["not_provided", "assumed", "recorded_not_scored", "red_flag_input", "beyond_the_data"],
+        "gap_keys_present": [
+          "not_provided",
+          "assumed",
+          "recorded_not_scored",
+          "red_flag_input",
+          "beyond_the_data"
+        ],
         "lede_present": true,
-        "red_flags": [],
-        "override": null,
-        "event_logged": "explanation_viewed"
+        "red_flags_empty": true,
+        "override_is_none": true
       }
     },
     {
-      "_name": "bundle_with_red_flags_rehydrated",
-      "_why": "red_flags JSONB must rehydrate into Trigger objects for the banners; flag_tier carried; red_flag_fired true.",
+      "_name": "svc_red_flags_rehydrated",
+      "_why": "red_flags JSONB rehydrates into Trigger objects on the PatientDetail (for banners); flag_tier carried.",
       "seed": {
-        "patient": {"patient_id": 101, "name": "Test Patient B", "date_of_birth": "1960-01-01", "sex": "M"},
-        "intake_record": {"intake_id": 5002, "patient_id": 101, "chief_complaint": "stroke", "missing_fields": []},
-        "patient_severity": {"intake_id": 5002, "severity_score": 6, "system_ESI": "ESI-2", "clinician_ESI": null, "confidence": "HIGH",
-          "red_flags": [{"flag_id": 5, "message": "Possible stroke - FAST positive", "flag_tier": 1}], "red_flag_fired": true, "flag_tier": 1},
-        "ai_explanation": {"intake_id": 5002, "data_completeness": "5 of 5", "factor_breakdown": [
-          {"rule_id": 8, "factor": "Chief complaint", "threshold": "stroke symptoms (FAST)", "weight": 6, "patient_value": "stroke", "contribution_pct": 100}
-        ], "gaps": {"not_provided": [], "assumed": [], "recorded_not_scored": [], "red_flag_input": [], "beyond_the_data": ["Appearance, work of breathing, distress, social context, staffing - outside this engine."]}}
+        "patient": {
+          "patient_id": 101,
+          "name": "Test Patient B",
+          "date_of_birth": "1960-01-01",
+          "sex": "M"
+        },
+        "intake_record": {
+          "intake_id": 5002,
+          "patient_id": 101,
+          "chief_complaint": "stroke",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5002,
+          "severity_score": 6,
+          "system_ESI": "ESI-2",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [
+            {
+              "flag_id": 5,
+              "message": "Possible stroke - FAST positive",
+              "flag_tier": 1
+            }
+          ],
+          "red_flag_fired": true,
+          "flag_tier": 1
+        },
+        "ai_explanation": {
+          "intake_id": 5002,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 8,
+              "factor": "Chief complaint",
+              "threshold": "stroke symptoms (FAST)",
+              "weight": 6,
+              "patient_value": "stroke",
+              "contribution_pct": 100
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
       },
-      "call": {"intake_id": 5002},
+      "call": {
+        "intake_id": 5002
+      },
       "expect": {
-        "status_code": 200,
         "system_ESI": "ESI-2",
         "band_name": "Emergent",
         "red_flags_count": 1,
         "red_flags_are_Trigger_objects": true,
         "red_flag_flag_tier": 1,
-        "lede_present": true,
-        "override": null,
-        "event_logged": "explanation_viewed",
-        "_note": "red_flags JSONB stores flag_id/message/flag_tier. If Trigger also needs flag_type/rationale, the rehydration must join red_flag_rule by flag_id - assert those are populated too, or accept they're null."
+        "override_is_none": true,
+        "_note": "Trigger needs flag_type + rationale. red_flags JSONB has only flag_id/message/flag_tier, so rehydration must join red_flag_rule by flag_id to fill them - assert they're populated, or this is where the gap shows."
       }
     },
     {
-      "_name": "bundle_with_override_dual_score",
-      "_why": "A clinician override present: system_ESI and clinician_ESI differ; override object attached (R2 dual-score surface).",
+      "_name": "svc_override_present",
+      "_why": "When an override row exists, PatientDetail.override is populated (Override object), system vs clinician ESI differ.",
       "seed": {
-        "patient": {"patient_id": 102, "name": "Test Patient C", "date_of_birth": "1955-06-15", "sex": "M"},
-        "intake_record": {"intake_id": 5003, "patient_id": 102, "chief_complaint": "cardiac", "missing_fields": []},
-        "patient_severity": {"intake_id": 5003, "severity_score": 6, "system_ESI": "ESI-2", "clinician_ESI": "ESI-1", "confidence": "HIGH", "red_flags": [], "red_flag_fired": false, "flag_tier": 3},
-        "ai_explanation": {"intake_id": 5003, "data_completeness": "5 of 5", "factor_breakdown": [
-          {"rule_id": 9, "factor": "Chief complaint", "threshold": "chest pain (cardiac concern)", "weight": 6, "patient_value": "cardiac", "contribution_pct": 100}
-        ], "gaps": {"not_provided": [], "assumed": [], "recorded_not_scored": [], "red_flag_input": [], "beyond_the_data": ["Appearance, work of breathing, distress, social context, staffing - outside this engine."]}},
-        "override": {"intake_id": 5003, "system_esi": "ESI-2", "clinician_esi": "ESI-1", "reason_code": "clinical_judgment"}
+        "patient": {
+          "patient_id": 102,
+          "name": "Test Patient C",
+          "date_of_birth": "1955-06-15",
+          "sex": "M"
+        },
+        "intake_record": {
+          "intake_id": 5003,
+          "patient_id": 102,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5003,
+          "severity_score": 6,
+          "system_ESI": "ESI-2",
+          "clinician_ESI": "ESI-1",
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5003,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 100
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        },
+        "override": {
+          "intake_id": 5003,
+          "system_esi": "ESI-2",
+          "clinician_esi": "ESI-1",
+          "reason_code": "clinical_judgment"
+        }
       },
-      "call": {"intake_id": 5003},
+      "call": {
+        "intake_id": 5003
+      },
       "expect": {
-        "status_code": 200,
         "system_ESI": "ESI-2",
         "clinician_ESI": "ESI-1",
-        "override_present": true,
-        "override_reason_code": "clinical_judgment",
-        "lede_present": true,
-        "event_logged": "explanation_viewed"
+        "override_is_none": false,
+        "override_reason_code": "clinical_judgment"
       }
     },
     {
-      "_name": "bundle_with_gaps_and_missing_fields",
-      "_why": "Incomplete-data patient: missing_fields populated, gaps has not_provided/assumed, drivers fewer. All compose into the bundle.",
+      "_name": "svc_gaps_and_missing_fields",
+      "_why": "Incomplete-data patient: missing_fields present ON THE OBJECT, gaps has not_provided/assumed.",
       "seed": {
-        "patient": {"patient_id": 103, "name": "Test Patient D", "date_of_birth": "1994-03-20", "sex": "F"},
-        "intake_record": {"intake_id": 5004, "patient_id": 103, "chief_complaint": "respiratory", "missing_fields": ["oxygen_saturation", "respiration_rate", "blood_pressure_systolic"]},
-        "patient_severity": {"intake_id": 5004, "severity_score": 5, "system_ESI": "ESI-3", "clinician_ESI": null, "confidence": "LOW", "red_flags": [], "red_flag_fired": false, "flag_tier": 3},
-        "ai_explanation": {"intake_id": 5004, "data_completeness": "2 of 5", "factor_breakdown": [
-          {"rule_id": 10, "factor": "Chief complaint", "threshold": "shortness of breath", "weight": 4, "patient_value": "respiratory", "contribution_pct": 80},
-          {"rule_id": 4, "factor": "Heart rate", "threshold": "100-120 bpm", "weight": 1, "patient_value": 110, "contribution_pct": 20}
-        ], "gaps": {"not_provided": ["respiration_rate", "blood_pressure_systolic"], "assumed": ["oxygen_saturation"], "recorded_not_scored": [], "red_flag_input": [], "beyond_the_data": ["Appearance, work of breathing, distress, social context, staffing - outside this engine."]}}
+        "patient": {
+          "patient_id": 103,
+          "name": "Test Patient D",
+          "date_of_birth": "1994-03-20",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5004,
+          "patient_id": 103,
+          "chief_complaint": "respiratory",
+          "missing_fields": [
+            "oxygen_saturation",
+            "respiration_rate",
+            "blood_pressure_systolic"
+          ]
+        },
+        "patient_severity": {
+          "intake_id": 5004,
+          "severity_score": 5,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "confidence": "LOW",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5004,
+          "data_completeness": "2 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 10,
+              "factor": "Chief complaint",
+              "threshold": "shortness of breath",
+              "weight": 4,
+              "patient_value": "respiratory",
+              "contribution_pct": 80
+            },
+            {
+              "rule_id": 4,
+              "factor": "Heart rate",
+              "threshold": "100-120 bpm",
+              "weight": 1,
+              "patient_value": 110,
+              "contribution_pct": 20
+            }
+          ],
+          "gaps": {
+            "not_provided": [
+              "respiration_rate",
+              "blood_pressure_systolic"
+            ],
+            "assumed": [
+              "oxygen_saturation"
+            ],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
       },
-      "call": {"intake_id": 5004},
+      "call": {
+        "intake_id": 5004
+      },
+      "expect": {
+        "system_ESI": "ESI-3",
+        "confidence": "LOW",
+        "missing_fields": [
+          "oxygen_saturation",
+          "respiration_rate",
+          "blood_pressure_systolic"
+        ],
+        "gap_not_provided": [
+          "respiration_rate",
+          "blood_pressure_systolic"
+        ],
+        "gap_assumed": [
+          "oxygen_saturation"
+        ]
+      }
+    },
+    {
+      "_name": "svc_age_derived",
+      "_why": "Patient.age on the object is derived from date_of_birth, not read from a stored age column.",
+      "seed": {
+        "patient": {
+          "patient_id": 104,
+          "name": "Test Patient E",
+          "date_of_birth": "1980-01-01",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5005,
+          "patient_id": 104,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5005,
+          "severity_score": 6,
+          "system_ESI": "ESI-2",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5005,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 100
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
+      },
+      "call": {
+        "intake_id": 5005
+      },
+      "expect": {
+        "age_is_derived": true,
+        "age_reference": "computed from 1980-01-01 at request time"
+      }
+    }
+  ],
+  "endpoint_cases": [
+    {
+      "_name": "ep_xai_full_response",
+      "_why": "GET /intakes/5001?mode=xai emits the full PatientDetailOut JSON: score+level fields + reasoning. Response casing (system_esi), DriverOut dicts. explanation_viewed fires.",
+      "seed": {
+        "patient": {
+          "patient_id": 110,
+          "name": "Test Patient A",
+          "date_of_birth": "1970-04-10",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5101,
+          "patient_id": 110,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5101,
+          "severity_score": 9,
+          "system_ESI": "ESI-1",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5101,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 67
+            },
+            {
+              "rule_id": 3,
+              "factor": "Heart rate",
+              "threshold": "> 120 bpm",
+              "weight": 3,
+              "patient_value": 124,
+              "contribution_pct": 33
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
+      },
+      "call": {
+        "intake_id": 5101,
+        "mode": "xai"
+      },
       "expect": {
         "status_code": 200,
-        "system_ESI": "ESI-3",
-        "band_name": "Urgent",
-        "confidence": "LOW",
-        "missing_fields": ["oxygen_saturation", "respiration_rate", "blood_pressure_systolic"],
-        "gap_not_provided": ["respiration_rate", "blood_pressure_systolic"],
-        "gap_assumed": ["oxygen_saturation"],
-        "lede_present": true,
+        "fields_present": [
+          "patient_name",
+          "age",
+          "sex",
+          "severity_score",
+          "system_esi",
+          "band_name",
+          "lede",
+          "confidence",
+          "explanation"
+        ],
+        "system_esi": "ESI-1",
+        "band_name": "Critical",
+        "severity_score_equals": 9,
+        "explanation_driver_count": 2,
+        "drivers_are_dicts": true,
         "event_logged": "explanation_viewed"
       }
     },
     {
-      "_name": "unknown_intake_id_404",
-      "_why": "GET /intakes/{id} for a non-existent intake returns 404 not_found, no bundle.",
+      "_name": "ep_blackbox_strips_reasoning",
+      "_why": "mode=blackbox emits ONLY score+level fields; lede/confidence/explanation/red_flags/override ABSENT from JSON (exclude_none). No event.",
+      "seed": {
+        "patient": {
+          "patient_id": 111,
+          "name": "Test Patient A",
+          "date_of_birth": "1970-04-10",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5102,
+          "patient_id": 111,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5102,
+          "severity_score": 9,
+          "system_ESI": "ESI-1",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5102,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 67
+            },
+            {
+              "rule_id": 3,
+              "factor": "Heart rate",
+              "threshold": "> 120 bpm",
+              "weight": 3,
+              "patient_value": 124,
+              "contribution_pct": 33
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
+      },
+      "call": {
+        "intake_id": 5102,
+        "mode": "blackbox"
+      },
+      "expect": {
+        "status_code": 200,
+        "fields_present": [
+          "patient_name",
+          "age",
+          "sex",
+          "severity_score",
+          "system_esi",
+          "band_name"
+        ],
+        "fields_absent": [
+          "lede",
+          "confidence",
+          "explanation",
+          "red_flags",
+          "override"
+        ],
+        "system_esi": "ESI-1",
+        "band_name": "Critical",
+        "no_event_logged": true
+      }
+    },
+    {
+      "_name": "ep_blackbox_hides_red_flags",
+      "_why": "Flagged (stroke) patient in blackbox: red_flags omitted from JSON despite red_flag_fired=true (flagstrip is xai-only).",
+      "seed": {
+        "patient": {
+          "patient_id": 112,
+          "name": "Test Patient B",
+          "date_of_birth": "1960-01-01",
+          "sex": "M"
+        },
+        "intake_record": {
+          "intake_id": 5103,
+          "patient_id": 112,
+          "chief_complaint": "stroke",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5103,
+          "severity_score": 6,
+          "system_ESI": "ESI-2",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [
+            {
+              "flag_id": 5,
+              "message": "Possible stroke - FAST positive",
+              "flag_tier": 1
+            }
+          ],
+          "red_flag_fired": true,
+          "flag_tier": 1
+        },
+        "ai_explanation": {
+          "intake_id": 5103,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 8,
+              "factor": "Chief complaint",
+              "threshold": "stroke symptoms (FAST)",
+              "weight": 6,
+              "patient_value": "stroke",
+              "contribution_pct": 100
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
+      },
+      "call": {
+        "intake_id": 5103,
+        "mode": "blackbox"
+      },
+      "expect": {
+        "status_code": 200,
+        "fields_present": [
+          "patient_name",
+          "age",
+          "sex",
+          "severity_score",
+          "system_esi",
+          "band_name"
+        ],
+        "fields_absent": [
+          "red_flags",
+          "explanation",
+          "lede",
+          "confidence",
+          "override"
+        ],
+        "system_esi": "ESI-2",
+        "band_name": "Emergent",
+        "no_event_logged": true,
+        "_note": "red_flags omitted despite red_flag_fired=true - deliberate study-purity choice; flag as a conscious clinical-safety tradeoff."
+      }
+    },
+    {
+      "_name": "ep_xai_override_present",
+      "_why": "xai response includes the override object (dual-score, R2) when one exists.",
+      "seed": {
+        "patient": {
+          "patient_id": 113,
+          "name": "Test Patient C",
+          "date_of_birth": "1955-06-15",
+          "sex": "M"
+        },
+        "intake_record": {
+          "intake_id": 5104,
+          "patient_id": 113,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5104,
+          "severity_score": 6,
+          "system_ESI": "ESI-2",
+          "clinician_ESI": "ESI-1",
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5104,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 100
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        },
+        "override": {
+          "intake_id": 5104,
+          "system_esi": "ESI-2",
+          "clinician_esi": "ESI-1",
+          "reason_code": "clinical_judgment"
+        }
+      },
+      "call": {
+        "intake_id": 5104,
+        "mode": "xai"
+      },
+      "expect": {
+        "status_code": 200,
+        "fields_present": [
+          "override"
+        ],
+        "override_reason_code": "clinical_judgment",
+        "system_esi": "ESI-2",
+        "event_logged": "explanation_viewed"
+      }
+    },
+    {
+      "_name": "ep_override_absent_omitted",
+      "_why": "No override -> override key ABSENT from JSON (exclude_none drops None), not null.",
+      "seed": {
+        "patient": {
+          "patient_id": 114,
+          "name": "Test Patient A",
+          "date_of_birth": "1970-04-10",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5105,
+          "patient_id": 114,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5105,
+          "severity_score": 9,
+          "system_ESI": "ESI-1",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5105,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 67
+            },
+            {
+              "rule_id": 3,
+              "factor": "Heart rate",
+              "threshold": "> 120 bpm",
+              "weight": 3,
+              "patient_value": 124,
+              "contribution_pct": 33
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
+      },
+      "call": {
+        "intake_id": 5105,
+        "mode": "xai"
+      },
+      "expect": {
+        "status_code": 200,
+        "fields_absent": [
+          "override"
+        ],
+        "_note": "override is None on the object -> exclude_none omits the key entirely. Assert ABSENT, never null."
+      }
+    },
+    {
+      "_name": "ep_unknown_intake_404",
+      "_why": "GET /intakes/{unknown}?mode=xai returns 404 not_found. mode included so the request passes query validation and reaches the 404 path.",
       "seed": {},
-      "call": {"intake_id": 999999},
+      "call": {
+        "intake_id": 999999,
+        "mode": "xai"
+      },
       "expect": {
         "status_code": 404,
         "error_code": "not_found",
@@ -138,22 +792,70 @@
       }
     },
     {
-      "_name": "age_derived_from_dob",
-      "_why": "Patient.age is derived from date_of_birth (not stored). Bundle must show the computed age, not a DOB field.",
+      "_name": "ep_missing_mode_400",
+      "_why": "mode is a required query param -> a request WITHOUT mode is rejected (422) before reaching composition.",
       "seed": {
-        "patient": {"patient_id": 104, "name": "Test Patient E", "date_of_birth": "1980-01-01", "sex": "F"},
-        "intake_record": {"intake_id": 5005, "patient_id": 104, "chief_complaint": "cardiac", "missing_fields": []},
-        "patient_severity": {"intake_id": 5005, "severity_score": 6, "system_ESI": "ESI-2", "clinician_ESI": null, "confidence": "HIGH", "red_flags": [], "red_flag_fired": false, "flag_tier": 3},
-        "ai_explanation": {"intake_id": 5005, "data_completeness": "5 of 5", "factor_breakdown": [
-          {"rule_id": 9, "factor": "Chief complaint", "threshold": "chest pain (cardiac concern)", "weight": 6, "patient_value": "cardiac", "contribution_pct": 100}
-        ], "gaps": {"not_provided": [], "assumed": [], "recorded_not_scored": [], "red_flag_input": [], "beyond_the_data": ["Appearance, work of breathing, distress, social context, staffing - outside this engine."]}}
+        "patient": {
+          "patient_id": 115,
+          "name": "Test Patient A",
+          "date_of_birth": "1970-04-10",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5106,
+          "patient_id": 115,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5106,
+          "severity_score": 9,
+          "system_ESI": "ESI-1",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5106,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 67
+            },
+            {
+              "rule_id": 3,
+              "factor": "Heart rate",
+              "threshold": "> 120 bpm",
+              "weight": 3,
+              "patient_value": 124,
+              "contribution_pct": 33
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        }
       },
-      "call": {"intake_id": 5005},
+      "call": {
+        "intake_id": 5106
+      },
       "expect": {
-        "status_code": 200,
-        "age_is_derived": true,
-        "age_reference": "computed from 1980-01-01 at request time, not read from a stored age column",
-        "lede_present": true
+        "status_code": 400,
+        "error_code": "invalid_input",
+        "_note": "mode is a required query param. The sub-app's RequestValidationError handler normalizes ALL validation failures (including missing query params) to 400 invalid_input - matching the app-wide error contract, not FastAPI's default 422."
       }
     }
   ]

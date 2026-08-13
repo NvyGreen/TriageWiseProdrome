@@ -17,6 +17,7 @@ from ..models.case_update import CaseUpdate
 from ..models.ai_explanation import AIExplanation
 from ..models.red_flag_rule import RedFlagRule
 from ..models.override import Override
+from ..models.condition_reference import ConditionReference
 
 from ..schemas.intake_create import IntakeCreate
 from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
@@ -500,6 +501,7 @@ class TriageService:
 
         lede = self._render_lede(severity, ai_explanation)
         dual_score_line, xai_line = self._render_dual_score(severity, ai_explanation)
+        base_rate_line = self._render_base_rate(intake.chief_complaint)
 
         try:
             stmt = select(Override).where(Override.severity_id == severity.severity_id)
@@ -527,6 +529,7 @@ class TriageService:
             lede=lede,
             dual_score_line=dual_score_line,
             xai_line=xai_line,
+            base_rate_line=base_rate_line,
             override=override_info
         )
 
@@ -680,3 +683,27 @@ class TriageService:
             xai_line = f"System weighted {joined} as {severity.system_ESI}. Confirm these were considered."
 
         return score_line, xai_line
+
+
+    def _render_base_rate(self, chief_complaint: str) -> str | None:
+        try:
+            stmt = select(ConditionReference).where(ConditionReference.complaint_key == chief_complaint)
+            complaint_condition = self.db.scalar(stmt)
+            if complaint_condition is None:
+                return None
+            base_rate_line = f"Illustrative base rate ({complaint_condition.source_label}): {complaint_condition.condition} -> {round(complaint_condition.admit_rate * 100, 1)}% admitted."
+
+            diagnosis_condition = None
+            if complaint_condition.context_condition is not None:
+                stmt = select(ConditionReference).where(ConditionReference.condition == complaint_condition.context_condition)
+                diagnosis_condition = self.db.scalar(stmt)
+            if diagnosis_condition is not None:
+                base_rate_line += f" Dangerous subset ({diagnosis_condition.condition}) -> {round(diagnosis_condition.admit_rate * 100, 1)}%, not identifiable at triage."
+
+            base_rate_line += " Population reference, not this patient's probability."
+            if complaint_condition.reliable == "low-n (<30)":
+                base_rate_line += " Small sample, illustrative only."
+            return base_rate_line
+        except SQLAlchemyError as e:
+            logger.exception("Could not get condition reference")
+            raise HTTPException(status_code=500) from e

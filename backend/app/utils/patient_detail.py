@@ -20,4 +20,5 @@ class PatientDetail:
     lede: str
     dual_score_line: str | None = None
     xai_line: str | None = None
+    base_rate_line: str | None = None
     override: OverrideInfo | None = None

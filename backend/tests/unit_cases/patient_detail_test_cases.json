@@ -12,7 +12,8 @@
       "severity_score may serialize as float (e.g. 9.0) if the column is float — endpoint cases assert numeric equality, not int identity.",
       "exclude_none: a stripped OR genuinely-absent field is OMITTED from JSON, never null.",
       "explanation_viewed fires in the ROUTE, xai branch only — so it's an endpoint-layer assertion, never a service-layer one.",
-      "mode is a required query param - a request without it fails validation and returns 400 invalid_input (the app normalizes all validation errors to 400, not 422)."
+      "mode is a required query param - a request without it fails validation and returns 400 invalid_input (the app normalizes all validation errors to 400, not 422).",
+      "base_rate_line is xai-only: absent in blackbox (in fields_absent), and present in xai ONLY when the complaint matches a condition_reference row (else None -> omitted)."
     ],
     "band_label_map": {
       "ESI-1": "Critical",
@@ -546,7 +547,8 @@
           "confidence",
           "explanation",
           "red_flags",
-          "override"
+          "override",
+          "base_rate_line"
         ],
         "system_esi": "ESI-1",
         "band_name": "Critical",
@@ -628,7 +630,8 @@
           "explanation",
           "lede",
           "confidence",
-          "override"
+          "override",
+          "base_rate_line"
         ],
         "system_esi": "ESI-2",
         "band_name": "Emergent",
@@ -856,6 +859,81 @@
         "status_code": 400,
         "error_code": "invalid_input",
         "_note": "mode is a required query param. The sub-app's RequestValidationError handler normalizes ALL validation failures (including missing query params) to 400 invalid_input - matching the app-wide error contract, not FastAPI's default 422."
+      }
+    },
+    {
+      "_name": "ep_xai_base_rate_present",
+      "_why": "xai mode, complaint matches a condition_reference row -> base_rate_line present in the response (illustrative, xai-only).",
+      "seed": {
+        "patient": {
+          "patient_id": 120,
+          "name": "Test Patient A",
+          "date_of_birth": "1970-04-10",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 5201,
+          "patient_id": 120,
+          "chief_complaint": "cardiac",
+          "missing_fields": []
+        },
+        "patient_severity": {
+          "intake_id": 5201,
+          "severity_score": 9,
+          "system_ESI": "ESI-1",
+          "clinician_ESI": null,
+          "confidence": "HIGH",
+          "red_flags": [],
+          "red_flag_fired": false,
+          "flag_tier": 3
+        },
+        "ai_explanation": {
+          "intake_id": 5201,
+          "data_completeness": "5 of 5",
+          "factor_breakdown": [
+            {
+              "rule_id": 9,
+              "factor": "Chief complaint",
+              "threshold": "chest pain (cardiac concern)",
+              "weight": 6,
+              "patient_value": "cardiac",
+              "contribution_pct": 67
+            },
+            {
+              "rule_id": 3,
+              "factor": "Heart rate",
+              "threshold": "> 120 bpm",
+              "weight": 3,
+              "patient_value": 124,
+              "contribution_pct": 33
+            }
+          ],
+          "gaps": {
+            "not_provided": [],
+            "assumed": [],
+            "recorded_not_scored": [],
+            "red_flag_input": [],
+            "beyond_the_data": [
+              "Appearance, work of breathing, distress, social context, staffing - outside this engine."
+            ]
+          }
+        },
+        "_condition_reference_seeded": true
+      },
+      "call": {
+        "intake_id": 5201,
+        "mode": "xai"
+      },
+      "expect": {
+        "status_code": 200,
+        "fields_present": [
+          "base_rate_line",
+          "explanation",
+          "lede"
+        ],
+        "base_rate_line_is_illustrative_labeled": true,
+        "event_logged": "explanation_viewed",
+        "_note": "base_rate_line present only because a condition_reference row matches the complaint. Assert it contains 'Illustrative base rate' + 'Population reference'."
       }
     }
   ]

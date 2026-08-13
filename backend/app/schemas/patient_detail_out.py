@@ -124,6 +124,8 @@ class PatientDetailOut(BaseModel):
     override: OverrideOut | None = None
     # xai_line NAMES delta drivers -> reasoning -> XAI only.
     dual_score_detail: str | None = None
+    # illustrative base rate -> reasoning -> XAI only.
+    base_rate_line: str | None = None
 
     @classmethod
     def from_detail(cls, detail, mode: str | Mode) -> "PatientDetailOut":
@@ -156,4 +158,5 @@ class PatientDetailOut(BaseModel):
                 else None
             ),
             dual_score_detail=detail.xai_line,
+            base_rate_line=detail.base_rate_line
         )

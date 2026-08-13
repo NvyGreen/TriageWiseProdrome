@@ -1,0 +1,116 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — base-rate rendering cases (req R3)",
+    "validates": "TriageService._render_base_rate(chief_complaint) -> str | None, using the REAL condition_reference table (seed from condition_reference.csv).",
+    "nature": "INTEGRATION. Seed condition_reference from the shipped CSV, call with a ChiefComplaint value, assert the exact line (or None).",
+    "seed_source": "condition_reference.csv (complaint_key values are ChiefComplaint enum values: cardiac, respiratory, stroke, syncope, abdominal).",
+    "complaint_coverage": {
+      "have_base_rate_row": [
+        "cardiac",
+        "respiratory",
+        "stroke",
+        "syncope",
+        "abdominal"
+      ],
+      "no_row_return_none": [
+        "neuro",
+        "general",
+        "minor_general",
+        "minor_injury"
+      ]
+    },
+    "conventions": [
+      "Complaint match: WHERE complaint_key == chief_complaint (a ChiefComplaint value).",
+      "admit_rate fraction -> round(rate*100,1)%.",
+      "Dangerous subset only if matched row has context_condition AND a row exists WHERE condition == context_condition.",
+      "Always appends ' Population reference, not this patient's probability.'",
+      "low-n: matched complaint row reliable == 'low-n (<30)' -> append ' Small sample, illustrative only.' (NOTE: no COMPLAINT row in the shipped CSV is low-n; only diagnosis rows 10/11 are, and those are never the complaint match - so the low-n branch is currently unreachable via complaint matching. Flag if you intend a low-n complaint.)",
+      "source_label renders the source name ('NHAMCS 2022')."
+    ]
+  },
+  "cases": [
+    {
+      "_name": "cardiac_with_mi_subset",
+      "_why": "chief_complaint 'cardiac' matches row 1 (Chest pain, context_condition=Acute MI). Row 3 (Acute MI) supplies the dangerous-subset rate. Robert's case.",
+      "call": {
+        "chief_complaint": "cardiac"
+      },
+      "expect": {
+        "base_rate_line": "Illustrative base rate (NHAMCS 2022): Chest pain (all causes) -> 13.7% admitted. Dangerous subset (Acute MI) -> 70.3%, not identifiable at triage. Population reference, not this patient's probability."
+      },
+      "_note": "Real CSV: row1 admit_rate 0.1373 -> 13.7%; row3 Acute MI 0.7031 -> 70.3%."
+    },
+    {
+      "_name": "respiratory_with_pneumonia_subset",
+      "_why": "'respiratory' matches row 6 (SOB, context=Pneumonia); row 7 (Pneumonia) supplies the subset.",
+      "call": {
+        "chief_complaint": "respiratory"
+      },
+      "expect": {
+        "base_rate_line": "Illustrative base rate (NHAMCS 2022): Shortness of breath -> 25.8% admitted. Dangerous subset (Pneumonia) -> 54.4%, not identifiable at triage. Population reference, not this patient's probability."
+      }
+    },
+    {
+      "_name": "stroke_no_subset",
+      "_why": "'stroke' matches row 5 (Stroke/TIA, no context_condition) -> complaint rate + caveat only.",
+      "call": {
+        "chief_complaint": "stroke"
+      },
+      "expect": {
+        "base_rate_line": "Illustrative base rate (NHAMCS 2022): Stroke / TIA -> 53.0% admitted. Population reference, not this patient's probability."
+      }
+    },
+    {
+      "_name": "syncope_no_subset",
+      "_why": "'syncope' matches row 8 (no context_condition).",
+      "call": {
+        "chief_complaint": "syncope"
+      },
+      "expect": {
+        "base_rate_line": "Illustrative base rate (NHAMCS 2022): Syncope (fainting) -> 20.5% admitted. Population reference, not this patient's probability."
+      }
+    },
+    {
+      "_name": "abdominal_no_subset",
+      "_why": "'abdominal' matches row 9 (no context_condition).",
+      "call": {
+        "chief_complaint": "abdominal"
+      },
+      "expect": {
+        "base_rate_line": "Illustrative base rate (NHAMCS 2022): Abdominal pain (all causes) -> 9.1% admitted. Population reference, not this patient's probability."
+      }
+    },
+    {
+      "_name": "neuro_no_match_returns_none",
+      "_why": "'neuro' has NO complaint row in condition_reference -> returns None (no base-rate line).",
+      "call": {
+        "chief_complaint": "neuro"
+      },
+      "expect": {
+        "base_rate_line": null
+      },
+      "_note": "Also applies to general, minor_general, minor_injury - none have complaint rows."
+    },
+    {
+      "_name": "general_no_match_returns_none",
+      "_why": "'general' has no complaint row -> None.",
+      "call": {
+        "chief_complaint": "general"
+      },
+      "expect": {
+        "base_rate_line": null
+      }
+    },
+    {
+      "_name": "context_condition_row_missing_skips_subset",
+      "_why": "GUARD (hypothetical seed): a complaint row names a context_condition, but no row has that condition -> diagnosis lookup None -> subset clause skipped. Not reproducible with the shipped CSV (all context_conditions have matching rows); seed a custom row to exercise.",
+      "call": {
+        "chief_complaint": "_custom_orphan_context"
+      },
+      "expect": {
+        "base_rate_line": "Illustrative base rate (NHAMCS 2022): Orphan complaint -> 10.0% admitted. Population reference, not this patient's probability."
+      },
+      "_note": "Requires a seeded complaint row with context_condition pointing at a non-existent condition. Documents the None-diagnosis branch."
+    }
+  ]
+}

@@ -502,6 +502,7 @@ class TriageService:
         lede = self._render_lede(severity, ai_explanation)
         dual_score_line, xai_line = self._render_dual_score(severity, ai_explanation)
         base_rate_line = self._render_base_rate(intake.chief_complaint)
+        risk_blurb = self._render_risk_blurb(severity, ai_explanation)
 
         try:
             stmt = select(Override).where(Override.severity_id == severity.severity_id)
@@ -527,6 +528,7 @@ class TriageService:
             explanation=explanation,
             red_flags=triggers,
             lede=lede,
+            risk_blurb=risk_blurb,
             dual_score_line=dual_score_line,
             xai_line=xai_line,
             base_rate_line=base_rate_line,
@@ -641,6 +643,24 @@ class TriageService:
             coverage_clause += f"{"; ".join(fallbacks)}."
 
         return lede + coverage_clause
+
+
+    def _render_risk_blurb(self, severity: PatientSeverity, explanation: AIExplanation) -> str:
+        drivers = [Driver(**d) for d in explanation.factor_breakdown]
+        drivers.sort(key=lambda d: d.contribution_pct, reverse=True)
+
+        # same naming rule as the lede: chief complaint renders its threshold,
+        # vitals render their factor
+        def name(d: Driver) -> str:
+            return d.threshold if d.factor == "Chief complaint" else d.factor
+
+        blurb = f"Derived from {severity.system_ESI}. Driven by {name(drivers[0])}"
+        if len(drivers) > 1:
+            secondary = ", ".join(name(d) for d in drivers[1:])
+            blurb += f", plus {secondary}"
+        blurb += ". Describes the inputs that scored - not a diagnosis."
+
+        return blurb
 
 
     def _render_dual_score(self, severity: PatientSeverity, explanation: AIExplanation) -> tuple[str | None, str | None]:

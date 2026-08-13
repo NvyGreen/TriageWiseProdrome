@@ -13,7 +13,8 @@
       "exclude_none: a stripped OR genuinely-absent field is OMITTED from JSON, never null.",
       "explanation_viewed fires in the ROUTE, xai branch only — so it's an endpoint-layer assertion, never a service-layer one.",
       "mode is a required query param - a request without it fails validation and returns 400 invalid_input (the app normalizes all validation errors to 400, not 422).",
-      "base_rate_line is xai-only: absent in blackbox (in fields_absent), and present in xai ONLY when the complaint matches a condition_reference row (else None -> omitted)."
+      "base_rate_line is xai-only: absent in blackbox (in fields_absent), and present in xai ONLY when the complaint matches a condition_reference row (else None -> omitted).",
+      "data_completeness is now a TOP-LEVEL always-shown field (severity box, both modes). risk_blurb is xai-only (names drivers -> reasoning): present in xai, absent in blackbox."
     ],
     "band_label_map": {
       "ESI-1": "Critical",
@@ -60,7 +61,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 67
+              "contribution_pct": 67,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             },
             {
               "rule_id": 3,
@@ -68,7 +71,9 @@
               "threshold": "> 120 bpm",
               "weight": 3,
               "patient_value": 124,
-              "contribution_pct": 33
+              "contribution_pct": 33,
+              "unit": "bpm",
+              "esi_anchor": "Marked tachycardia"
             }
           ],
           "gaps": {
@@ -147,7 +152,9 @@
               "threshold": "stroke symptoms (FAST)",
               "weight": 6,
               "patient_value": "stroke",
-              "contribution_pct": 100
+              "contribution_pct": 100,
+              "unit": "",
+              "esi_anchor": "Time-critical → push ESI-2; NHAMCS stroke ~53% admit"
             }
           ],
           "gaps": {
@@ -210,7 +217,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 100
+              "contribution_pct": 100,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             }
           ],
           "gaps": {
@@ -280,7 +289,9 @@
               "threshold": "shortness of breath",
               "weight": 4,
               "patient_value": "respiratory",
-              "contribution_pct": 80
+              "contribution_pct": 80,
+              "unit": "",
+              "esi_anchor": "NHAMCS SOB ~26% admit"
             },
             {
               "rule_id": 4,
@@ -288,7 +299,9 @@
               "threshold": "100-120 bpm",
               "weight": 1,
               "patient_value": 110,
-              "contribution_pct": 20
+              "contribution_pct": 20,
+              "unit": "bpm",
+              "esi_anchor": "Mild tachycardia"
             }
           ],
           "gaps": {
@@ -363,7 +376,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 100
+              "contribution_pct": 100,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             }
           ],
           "gaps": {
@@ -423,7 +438,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 67
+              "contribution_pct": 67,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             },
             {
               "rule_id": 3,
@@ -431,7 +448,9 @@
               "threshold": "> 120 bpm",
               "weight": 3,
               "patient_value": 124,
-              "contribution_pct": 33
+              "contribution_pct": 33,
+              "unit": "bpm",
+              "esi_anchor": "Marked tachycardia"
             }
           ],
           "gaps": {
@@ -460,7 +479,9 @@
           "band_name",
           "lede",
           "confidence",
-          "explanation"
+          "explanation",
+          "data_completeness",
+          "risk_blurb"
         ],
         "system_esi": "ESI-1",
         "band_name": "Critical",
@@ -506,7 +527,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 67
+              "contribution_pct": 67,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             },
             {
               "rule_id": 3,
@@ -514,7 +537,9 @@
               "threshold": "> 120 bpm",
               "weight": 3,
               "patient_value": 124,
-              "contribution_pct": 33
+              "contribution_pct": 33,
+              "unit": "bpm",
+              "esi_anchor": "Marked tachycardia"
             }
           ],
           "gaps": {
@@ -540,7 +565,8 @@
           "sex",
           "severity_score",
           "system_esi",
-          "band_name"
+          "band_name",
+          "data_completeness"
         ],
         "fields_absent": [
           "lede",
@@ -548,7 +574,8 @@
           "explanation",
           "red_flags",
           "override",
-          "base_rate_line"
+          "base_rate_line",
+          "risk_blurb"
         ],
         "system_esi": "ESI-1",
         "band_name": "Critical",
@@ -597,7 +624,9 @@
               "threshold": "stroke symptoms (FAST)",
               "weight": 6,
               "patient_value": "stroke",
-              "contribution_pct": 100
+              "contribution_pct": 100,
+              "unit": "",
+              "esi_anchor": "Time-critical → push ESI-2; NHAMCS stroke ~53% admit"
             }
           ],
           "gaps": {
@@ -623,7 +652,8 @@
           "sex",
           "severity_score",
           "system_esi",
-          "band_name"
+          "band_name",
+          "data_completeness"
         ],
         "fields_absent": [
           "red_flags",
@@ -631,7 +661,8 @@
           "lede",
           "confidence",
           "override",
-          "base_rate_line"
+          "base_rate_line",
+          "risk_blurb"
         ],
         "system_esi": "ESI-2",
         "band_name": "Emergent",
@@ -675,7 +706,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 100
+              "contribution_pct": 100,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             }
           ],
           "gaps": {
@@ -745,7 +778,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 67
+              "contribution_pct": 67,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             },
             {
               "rule_id": 3,
@@ -753,7 +788,9 @@
               "threshold": "> 120 bpm",
               "weight": 3,
               "patient_value": 124,
-              "contribution_pct": 33
+              "contribution_pct": 33,
+              "unit": "bpm",
+              "esi_anchor": "Marked tachycardia"
             }
           ],
           "gaps": {
@@ -830,7 +867,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 67
+              "contribution_pct": 67,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             },
             {
               "rule_id": 3,
@@ -838,7 +877,9 @@
               "threshold": "> 120 bpm",
               "weight": 3,
               "patient_value": 124,
-              "contribution_pct": 33
+              "contribution_pct": 33,
+              "unit": "bpm",
+              "esi_anchor": "Marked tachycardia"
             }
           ],
           "gaps": {
@@ -897,7 +938,9 @@
               "threshold": "chest pain (cardiac concern)",
               "weight": 6,
               "patient_value": "cardiac",
-              "contribution_pct": 67
+              "contribution_pct": 67,
+              "unit": "",
+              "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
             },
             {
               "rule_id": 3,
@@ -905,7 +948,9 @@
               "threshold": "> 120 bpm",
               "weight": 3,
               "patient_value": 124,
-              "contribution_pct": 33
+              "contribution_pct": 33,
+              "unit": "bpm",
+              "esi_anchor": "Marked tachycardia"
             }
           ],
           "gaps": {

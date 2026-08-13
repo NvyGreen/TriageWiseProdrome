@@ -14,7 +14,7 @@ class ScoringRule(Base):
     weight = Column(Integer, nullable=False)
     complaint_group = Column(String(40))
     resource_level = Column(String(8))
-    esi_anchor = Column(String(120))
+    esi_anchor = Column(String(120), nullable=False)
     fallback_if_missing = Column(String(120), nullable=False)
     scoring_action = Column(String(16))
     confidence_effect = Column(String(8))

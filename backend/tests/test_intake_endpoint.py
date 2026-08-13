@@ -473,6 +473,11 @@ def test_patient_detail_endpoint(case, client, db_session):
             assert all(isinstance(d, dict) for d in body["explanation"]["named_drivers"])
         if "override_reason_code" in expect:
             assert body["override"]["reason_code"] == expect["override_reason_code"]
+        # base_rate_line is illustrative-labeled when the complaint matches a
+        # condition_reference row (xai-only).
+        if expect.get("base_rate_line_is_illustrative_labeled"):
+            assert "Illustrative base rate" in body["base_rate_line"]
+            assert "Population reference" in body["base_rate_line"]
 
     # explanation_viewed fires in the route, xai branch only.
     viewed = _events(db_session, intake_id, EventType.EXPLANATION_VIEWED)

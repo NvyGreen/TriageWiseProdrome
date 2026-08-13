@@ -40,6 +40,7 @@ from ..utils.explanation import Explanation
 from ..utils.trigger import Trigger
 from ..utils.dates import age_in_years
 from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS, LABEL_MAP
+from ..utils.enums import ReasonCode
 
 
 logger = logging.getLogger(__name__)
@@ -60,13 +61,6 @@ class EventType(StrEnum):
     CASE_UPDATED = "case_updated"
     STATUS_CHANGED = "status_changed"
     EXPLANATION_VIEWED = "explanation_viewed"
-
-
-class ReasonCode(StrEnum):
-    LACK_INFO = "Clinical info AI lacks"
-    BAD_DRIVER = "AI driver incorrect"
-    PATIENT_PREFERENCE = "Patient preference"
-    OTHER = "Other"
 
 
 class IntakeNotFoundError(Exception):
@@ -572,7 +566,13 @@ class TriageService:
             self.db.add(override_event)
             self.db.flush()
 
-            old_position, new_position = queue.updatePatientPosition(severity.intake_id, int(clinician_esi[-1]), severity.flag_tier)
+            try:
+                old_position, new_position = queue.updatePatientPosition(severity.intake_id, int(clinician_esi[-1]), severity.flag_tier)
+            except ValueError as e:
+                self.db.rollback()
+                logger.exception("Intake wasn't in queue when it should be")
+                raise HTTPException(status_code=500) from e
+            
             if old_position != new_position:
                 reprioritized_event = EventLog(
                     event_type=EventType.REPRIORITIZED,

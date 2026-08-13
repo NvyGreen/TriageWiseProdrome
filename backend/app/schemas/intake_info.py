@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
-from ..utils.intake_enums import ChiefComplaint, PreExistingConditions, PregnancyStatus
+from ..utils.enums import ChiefComplaint, PreExistingConditions, PregnancyStatus
 
 
 class IntakeInfo(BaseModel):

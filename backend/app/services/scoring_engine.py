@@ -18,14 +18,8 @@ from ..utils.rule import Rule
 from ..utils.driver import Driver
 from ..utils.severity_result import SeverityResult
 from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS
+from ..utils.enums import ESILevels
 
-
-class ESILevels(StrEnum):
-    ESI_1 = "ESI-1"
-    ESI_2 = "ESI-2"
-    ESI_3 = "ESI-3"
-    ESI_4 = "ESI-4"
-    ESI_5 = "ESI-5"
 
 class FallbackCodes(StrEnum):
     ASSUME_NORMAL = "assume_normal"

@@ -1,6 +1,6 @@
 from datetime import date
 from pydantic import BaseModel
-from ..utils.intake_enums import Sex
+from ..utils.enums import Sex
 
 
 class PatientInfo(BaseModel):

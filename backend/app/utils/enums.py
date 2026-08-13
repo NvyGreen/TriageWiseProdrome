@@ -37,3 +37,18 @@ class PregnancyStatus(StrEnum):
     NONE = "none"
     PREGNANT = "pregnant"
     POSTPARTUM = "postpartum"
+
+
+class ReasonCode(StrEnum):
+    LACK_INFO = "Clinical info AI lacks"
+    BAD_DRIVER = "AI driver incorrect"
+    PATIENT_PREFERENCE = "Patient preference"
+    OTHER = "Other"
+
+
+class ESILevels(StrEnum):
+    ESI_1 = "ESI-1"
+    ESI_2 = "ESI-2"
+    ESI_3 = "ESI-3"
+    ESI_4 = "ESI-4"
+    ESI_5 = "ESI-5"

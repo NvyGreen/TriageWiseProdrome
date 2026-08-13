@@ -38,7 +38,9 @@
             "patient_value": "cardiac",
             "weight": 6,
             "contribution_pct": 67,
-            "threshold": "chest pain (cardiac concern)"
+            "threshold": "chest pain (cardiac concern)",
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 3,
@@ -46,7 +48,9 @@
             "patient_value": 124,
             "weight": 3,
             "contribution_pct": 33,
-            "threshold": "> 120 bpm"
+            "threshold": "> 120 bpm",
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           }
         ],
         "missing_fields": [],
@@ -97,7 +101,9 @@
             "patient_value": "respiratory",
             "weight": 4,
             "contribution_pct": 80,
-            "threshold": "shortness of breath"
+            "threshold": "shortness of breath",
+            "unit": "",
+            "esi_anchor": "NHAMCS SOB ~26% admit"
           },
           {
             "rule_id": 4,
@@ -105,13 +111,15 @@
             "patient_value": 110,
             "weight": 1,
             "contribution_pct": 20,
-            "threshold": "100-120 bpm"
+            "threshold": "100-120 bpm",
+            "unit": "bpm",
+            "esi_anchor": "Mild tachycardia"
           }
         ],
         "missing_fields": [
-          "oxygen_saturation",
           "respiration_rate",
-          "blood_pressure_systolic"
+          "blood_pressure_systolic",
+          "oxygen_saturation"
         ],
         "fallbacks_applied": [
           {
@@ -179,7 +187,9 @@
             "patient_value": "cardiac",
             "weight": 6,
             "contribution_pct": 100,
-            "threshold": "chest pain (cardiac concern)"
+            "threshold": "chest pain (cardiac concern)",
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           }
         ],
         "missing_fields": [
@@ -237,7 +247,9 @@
             "patient_value": "stroke",
             "weight": 6,
             "contribution_pct": 100,
-            "threshold": "stroke symptoms (FAST)"
+            "threshold": "stroke symptoms (FAST)",
+            "unit": "",
+            "esi_anchor": "Time-critical → push ESI-2; NHAMCS stroke ~53% admit"
           }
         ],
         "missing_fields": [],
@@ -290,7 +302,9 @@
             "patient_value": "stroke",
             "weight": 6,
             "contribution_pct": 100,
-            "threshold": "stroke symptoms (FAST)"
+            "threshold": "stroke symptoms (FAST)",
+            "unit": "",
+            "esi_anchor": "Time-critical → push ESI-2; NHAMCS stroke ~53% admit"
           }
         ],
         "missing_fields": [],
@@ -354,7 +368,9 @@
             "threshold": "other / general",
             "patient_value": "general",
             "weight": 1,
-            "contribution_pct": 100
+            "contribution_pct": 100,
+            "unit": "",
+            "esi_anchor": "Default low weight"
           }
         ],
         "missing_fields": [],
@@ -418,7 +434,9 @@
             "threshold": "other / general",
             "patient_value": "general",
             "weight": 1,
-            "contribution_pct": 100
+            "contribution_pct": 100,
+            "unit": "",
+            "esi_anchor": "Default low weight"
           }
         ],
         "missing_fields": [],
@@ -477,7 +495,9 @@
             "patient_value": "stroke",
             "weight": 6,
             "contribution_pct": 100,
-            "threshold": "stroke symptoms (FAST)"
+            "threshold": "stroke symptoms (FAST)",
+            "unit": "",
+            "esi_anchor": "Time-critical → push ESI-2; NHAMCS stroke ~53% admit"
           }
         ],
         "missing_fields": [
@@ -561,7 +581,9 @@
             "patient_value": "cardiac",
             "weight": 6,
             "contribution_pct": 46,
-            "threshold": "chest pain (cardiac concern)"
+            "threshold": "chest pain (cardiac concern)",
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 3,
@@ -569,7 +591,9 @@
             "patient_value": 128,
             "weight": 3,
             "contribution_pct": 23,
-            "threshold": "> 120 bpm"
+            "threshold": "> 120 bpm",
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           },
           {
             "rule_id": 1,
@@ -577,7 +601,9 @@
             "patient_value": 89,
             "weight": 4,
             "contribution_pct": 31,
-            "threshold": "< 92%"
+            "threshold": "< 92%",
+            "unit": "%",
+            "esi_anchor": "Hypoxia — ESI-2 danger vital"
           }
         ],
         "missing_fields": [],
@@ -622,7 +648,9 @@
             "patient_value": "cardiac",
             "weight": 6,
             "contribution_pct": 100,
-            "threshold": "chest pain (cardiac concern)"
+            "threshold": "chest pain (cardiac concern)",
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           }
         ],
         "missing_fields": [],
@@ -664,7 +692,9 @@
             "patient_value": "general",
             "weight": 1,
             "contribution_pct": 100,
-            "threshold": "other / general"
+            "threshold": "other / general",
+            "unit": "",
+            "esi_anchor": "Default low weight"
           }
         ],
         "missing_fields": [],

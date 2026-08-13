@@ -18,6 +18,7 @@ class PatientDetail:
     explanation: Explanation
     red_flags: list[TriggerInfo]
     lede: str
+    risk_blurb: str
     dual_score_line: str | None = None
     xai_line: str | None = None
     base_rate_line: str | None = None

@@ -41,7 +41,9 @@
             "threshold": "shortness of breath",
             "weight": 4,
             "patient_value": "respiratory",
-            "contribution_pct": 80
+            "contribution_pct": 80,
+            "unit": "",
+            "esi_anchor": "NHAMCS SOB ~26% admit"
           },
           {
             "rule_id": 4,
@@ -49,7 +51,9 @@
             "threshold": "100-120 bpm",
             "weight": 1,
             "patient_value": 110,
-            "contribution_pct": 20
+            "contribution_pct": 20,
+            "unit": "bpm",
+            "esi_anchor": "Mild tachycardia"
           }
         ],
         "gaps": {
@@ -100,7 +104,9 @@
             "threshold": "chest pain (cardiac concern)",
             "weight": 6,
             "patient_value": "cardiac",
-            "contribution_pct": 43
+            "contribution_pct": 43,
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 3,
@@ -108,7 +114,9 @@
             "threshold": "> 120 bpm",
             "weight": 3,
             "patient_value": 128,
-            "contribution_pct": 21
+            "contribution_pct": 21,
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           },
           {
             "rule_id": 1,
@@ -116,7 +124,9 @@
             "threshold": "< 92%",
             "weight": 4,
             "patient_value": 89,
-            "contribution_pct": 29
+            "contribution_pct": 29,
+            "unit": "%",
+            "esi_anchor": "Hypoxia — ESI-2 danger vital"
           },
           {
             "rule_id": 5,
@@ -124,7 +134,9 @@
             "threshold": "> 24 /min",
             "weight": 1,
             "patient_value": 26,
-            "contribution_pct": 7
+            "contribution_pct": 7,
+            "unit": "/min",
+            "esi_anchor": "Tachypnea"
           }
         ]
       },
@@ -152,7 +164,9 @@
             "threshold": "stroke symptoms (FAST)",
             "weight": 6,
             "patient_value": "stroke",
-            "contribution_pct": 100
+            "contribution_pct": 100,
+            "unit": "",
+            "esi_anchor": "Time-critical → push ESI-2; NHAMCS stroke ~53% admit"
           }
         ],
         "gaps": {
@@ -213,7 +227,9 @@
             "threshold": "chest pain (cardiac concern)",
             "weight": 6,
             "patient_value": "cardiac",
-            "contribution_pct": 67
+            "contribution_pct": 67,
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 3,
@@ -221,7 +237,9 @@
             "threshold": "> 120 bpm",
             "weight": 3,
             "patient_value": 124,
-            "contribution_pct": 33
+            "contribution_pct": 33,
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           },
           {
             "rule_id": 1,
@@ -229,7 +247,9 @@
             "threshold": "92-94%",
             "weight": 2,
             "patient_value": 93,
-            "contribution_pct": 0
+            "contribution_pct": 0,
+            "unit": "%",
+            "esi_anchor": "Hypoxia — ESI-2 danger vital"
           }
         ]
       },
@@ -257,7 +277,9 @@
             "threshold": "abdominal pain",
             "weight": 3,
             "patient_value": "abdominal",
-            "contribution_pct": 75
+            "contribution_pct": 75,
+            "unit": "",
+            "esi_anchor": "NHAMCS abdo ~9% admit — lower baseline"
           },
           {
             "rule_id": 4,
@@ -265,7 +287,9 @@
             "threshold": "100-120 bpm",
             "weight": 1,
             "patient_value": 105,
-            "contribution_pct": 25
+            "contribution_pct": 25,
+            "unit": "bpm",
+            "esi_anchor": "Mild tachycardia"
           }
         ]
       },
@@ -293,7 +317,9 @@
             "threshold": "minor complaint",
             "weight": 0,
             "patient_value": "minor_general",
-            "contribution_pct": 0
+            "contribution_pct": 0,
+            "unit": "",
+            "esi_anchor": "single X-ray or repair"
           }
         ]
       },

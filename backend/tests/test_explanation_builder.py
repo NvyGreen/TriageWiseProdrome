@@ -48,9 +48,11 @@ def _drivers(raw):
             rule_id=d["rule_id"],
             factor=d["factor"],
             threshold=d["threshold"],
+            unit=d["unit"],
             weight=d["weight"],
             patient_value=d["patient_value"],
             contribution_pct=d["contribution_pct"],
+            esi_anchor=d["esi_anchor"],
         )
         for d in raw
     ]

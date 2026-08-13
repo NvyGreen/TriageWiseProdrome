@@ -33,7 +33,9 @@
             "threshold": "chest pain (cardiac concern)",
             "weight": 6,
             "patient_value": "chest pain",
-            "contribution_pct": 43
+            "contribution_pct": 43,
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 1,
@@ -41,7 +43,9 @@
             "threshold": "< 92%",
             "weight": 4,
             "patient_value": "93%",
-            "contribution_pct": 29
+            "contribution_pct": 29,
+            "unit": "%",
+            "esi_anchor": "Hypoxia — ESI-2 danger vital"
           },
           {
             "rule_id": 3,
@@ -49,7 +53,9 @@
             "threshold": "> 120 bpm",
             "weight": 3,
             "patient_value": "128",
-            "contribution_pct": 21
+            "contribution_pct": 21,
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           },
           {
             "rule_id": 5,
@@ -57,7 +63,9 @@
             "threshold": "> 24",
             "weight": 1,
             "patient_value": "22",
-            "contribution_pct": 7
+            "contribution_pct": 7,
+            "unit": "/min",
+            "esi_anchor": "Tachypnea"
           }
         ]
       },
@@ -80,7 +88,9 @@
             "threshold": "chest pain (cardiac concern)",
             "weight": 6,
             "patient_value": "chest pain",
-            "contribution_pct": 43
+            "contribution_pct": 43,
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 1,
@@ -88,7 +98,9 @@
             "threshold": "< 92%",
             "weight": 4,
             "patient_value": "93%",
-            "contribution_pct": 29
+            "contribution_pct": 29,
+            "unit": "%",
+            "esi_anchor": "Hypoxia — ESI-2 danger vital"
           },
           {
             "rule_id": 3,
@@ -96,7 +108,9 @@
             "threshold": "> 120 bpm",
             "weight": 3,
             "patient_value": "128",
-            "contribution_pct": 21
+            "contribution_pct": 21,
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           },
           {
             "rule_id": 5,
@@ -104,7 +118,9 @@
             "threshold": "> 24",
             "weight": 1,
             "patient_value": "22",
-            "contribution_pct": 7
+            "contribution_pct": 7,
+            "unit": "/min",
+            "esi_anchor": "Tachypnea"
           }
         ]
       },
@@ -127,7 +143,9 @@
             "threshold": "chest pain (cardiac concern)",
             "weight": 6,
             "patient_value": "chest pain",
-            "contribution_pct": 43
+            "contribution_pct": 43,
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           },
           {
             "rule_id": 1,
@@ -135,7 +153,9 @@
             "threshold": "< 92%",
             "weight": 4,
             "patient_value": "93%",
-            "contribution_pct": 29
+            "contribution_pct": 29,
+            "unit": "%",
+            "esi_anchor": "Hypoxia — ESI-2 danger vital"
           },
           {
             "rule_id": 3,
@@ -143,7 +163,9 @@
             "threshold": "> 120 bpm",
             "weight": 3,
             "patient_value": "128",
-            "contribution_pct": 21
+            "contribution_pct": 21,
+            "unit": "bpm",
+            "esi_anchor": "Marked tachycardia"
           },
           {
             "rule_id": 5,
@@ -151,7 +173,9 @@
             "threshold": "> 24",
             "weight": 1,
             "patient_value": "22",
-            "contribution_pct": 7
+            "contribution_pct": 7,
+            "unit": "/min",
+            "esi_anchor": "Tachypnea"
           }
         ]
       },
@@ -173,7 +197,9 @@
             "threshold": "abdominal pain",
             "weight": 1,
             "patient_value": "abdominal pain",
-            "contribution_pct": 50
+            "contribution_pct": 50,
+            "unit": "",
+            "esi_anchor": "NHAMCS abdo ~9% admit — lower baseline"
           },
           {
             "rule_id": 4,
@@ -181,7 +207,9 @@
             "threshold": "100-120 bpm",
             "weight": 1,
             "patient_value": "105",
-            "contribution_pct": 50
+            "contribution_pct": 50,
+            "unit": "bpm",
+            "esi_anchor": "Mild tachycardia"
           }
         ]
       },
@@ -204,7 +232,9 @@
             "threshold": "chest pain (cardiac concern)",
             "weight": 6,
             "patient_value": "cardiac",
-            "contribution_pct": 100
+            "contribution_pct": 100,
+            "unit": "",
+            "esi_anchor": "Cardiac dx ~70% admit vs 14% all chest pain → ESI-2"
           }
         ]
       },

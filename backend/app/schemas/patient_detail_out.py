@@ -35,21 +35,26 @@ class Mode(str, Enum):
 # Nested output pieces (xai-only content)
 # --------------------------------------------------------------------------
 class DriverOut(BaseModel):
+    rule_id: int
     factor: str
     threshold: str
     weight: int
     patient_value: str | int
     contribution_pct: int
+    unit: str | None
+    esi_anchor: str
 
     @classmethod
     def from_driver(cls, d) -> "DriverOut":
-        # rule_id intentionally omitted — rule IDs are not shown in the view.
         return cls(
+            rule_id=d.rule_id,
             factor=d.factor,
             threshold=d.threshold,
             weight=d.weight,
             patient_value=d.patient_value,
             contribution_pct=d.contribution_pct,
+            unit=d.unit,
+            esi_anchor=d.esi_anchor,
         )
 
 
@@ -112,12 +117,12 @@ class PatientDetailOut(BaseModel):
     severity_score: float
     system_esi: str
     band_name: str
-    # dual-score numbers carry no driver info -> safe in both modes.
-    # None when no clinician_ESI was supplied (omitted by exclude_none).
+    data_completeness: str
     dual_score_line: str | None = None
 
     # --- xai-only (omitted in black-box via exclude_none) ---
     lede: str | None = None
+    risk_blurb: str | None = None
     confidence: str | None = None
     explanation: ExplanationOut | None = None
     red_flags: list[RedFlagOut] | None = None
@@ -136,7 +141,7 @@ class PatientDetailOut(BaseModel):
             severity_score=detail.severity.severity_score,
             system_esi=detail.severity.system_ESI,
             band_name=LABEL_MAP[detail.severity.system_ESI],
-            # numbers-only dual score: both modes (None -> omitted)
+            data_completeness=detail.explanation.data_completeness,
             dual_score_line=detail.dual_score_line,
         )
 
@@ -149,6 +154,7 @@ class PatientDetailOut(BaseModel):
         return cls(
             **base,
             lede=detail.lede,
+            risk_blurb=detail.risk_blurb,
             confidence=detail.severity.confidence,
             explanation=ExplanationOut.from_explanation(detail.explanation),
             red_flags=[RedFlagOut.from_trigger(t) for t in detail.red_flags],

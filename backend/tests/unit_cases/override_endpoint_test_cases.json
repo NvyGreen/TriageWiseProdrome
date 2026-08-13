@@ -1,0 +1,377 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — override ENDPOINT cases (POST /overrides/, req R4 + idempotency 1.1b-style)",
+    "validates": "POST /overrides/ HTTP contract: status codes, response body, idempotency (replay/conflict/expiry), and validation. Distinct from override_test_cases.json, which tests the applyOverride SERVICE method.",
+    "nature": "INTEGRATION at the HTTP layer. Seed rows (+ optionally a pre-existing idempotency_key row and a queue), send the request with headers+body, assert the emitted response and the persisted side effects.",
+    "layer_note": "This is the ENDPOINT layer. Domain-object assertions (Result fields, Driver/Trigger types) belong in override_test_cases.json. Here: status_code, error envelopes, response body dict, idempotency behavior.",
+    "idempotency_contract": [
+      "No Idempotency-Key header -> 400 invalid_input (IdempotencyKeyRequiredException).",
+      "Key present, no stored row (or expired) -> execute normally, then store/upsert the key.",
+      "Key present, stored row within TTL, SAME payload hash -> replay stored response_body verbatim (201), skip applyOverride.",
+      "Key present, stored row within TTL, DIFFERENT payload hash -> 409 duplicate_request.",
+      "hash_payload = SHA-256 of the canonicalized validated OverrideCreate (sorted keys, no whitespace).",
+      "TTL = 24h, enforced at read against created_at; past-TTL keys are treated as absent and upserted."
+    ],
+    "error_contract": [
+      "Body validation failures (bad reason_code, bad clinician_esi (ESILevels), missing severity_id) -> 400 invalid_input via RequestValidationError normalization (NOT 422).",
+      "Unknown severity_id -> 404 not_found ('No severity with that id.').",
+      "Success -> 201 + {message, intake_id, severity_score, queue_placement}."
+    ],
+    "reason_codes": [
+      "Clinical info AI lacks",
+      "AI driver incorrect",
+      "Patient preference",
+      "Other"
+    ]
+  },
+  "cases": [
+    {
+      "_name": "post_override_201_success",
+      "_why": "Valid override on an existing severity, fresh idempotency key. Returns 201 + success body; override persists; clinician_ESI set.",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8001,
+          "intake_id": 7001,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7001,
+          "patient_id": 300
+        },
+        "queue_seed": [
+          {
+            "intake_id": 7001,
+            "esi": "ESI-3",
+            "flag_tier": 3
+          }
+        ]
+      },
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-success-001"
+        },
+        "body": {
+          "severity_id": 8001,
+          "clinician_esi": "ESI-1",
+          "reason_code": "AI driver incorrect",
+          "note": "Clear STEMI."
+        }
+      },
+      "expect": {
+        "status_code": 201,
+        "body_keys": [
+          "message",
+          "intake_id",
+          "severity_score",
+          "queue_placement"
+        ],
+        "body_message": "Override applied successfully",
+        "body_intake_id": 7001,
+        "body_severity_score": 4,
+        "override_persisted": true,
+        "clinician_ESI_set_to": "ESI-1",
+        "idempotency_key_stored": true
+      }
+    },
+    {
+      "_name": "post_override_replay_verbatim",
+      "_why": "Same Idempotency-Key + identical payload within TTL -> check_idempotency returns the stored row; handler replays the stored response_body verbatim. NO second override row, NO second event.",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8002,
+          "intake_id": 7002,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": "ESI-1",
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7002,
+          "patient_id": 301
+        },
+        "idempotency_key_row": {
+          "idempotency_key": "key-replay-002",
+          "request_hash": "<hash of the body below>",
+          "response_body": {
+            "message": "Override applied successfully",
+            "intake_id": 7002,
+            "severity_score": 4,
+            "queue_placement": 0
+          },
+          "status_code": 201,
+          "created_at": "within TTL"
+        }
+      },
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-replay-002"
+        },
+        "body": {
+          "severity_id": 8002,
+          "clinician_esi": "ESI-1",
+          "reason_code": "AI driver incorrect",
+          "note": "Clear STEMI."
+        }
+      },
+      "expect": {
+        "status_code": 201,
+        "body_equals_stored": true,
+        "no_new_override_row": true,
+        "no_new_events": true,
+        "applyOverride_not_called": true
+      },
+      "_note": "request_hash must equal hash_payload(OverrideCreate(body)). The stored body is replayed as-is; applyOverride is skipped entirely."
+    },
+    {
+      "_name": "post_override_409_key_reused_different_body",
+      "_why": "Same Idempotency-Key but a DIFFERENT payload within TTL -> DuplicateRequestException -> 409 duplicate_request. No write.",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8003,
+          "intake_id": 7003,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7003,
+          "patient_id": 302
+        },
+        "idempotency_key_row": {
+          "idempotency_key": "key-conflict-003",
+          "request_hash": "<hash of a DIFFERENT prior body>",
+          "response_body": {
+            "message": "Override applied successfully",
+            "intake_id": 7003,
+            "severity_score": 4,
+            "queue_placement": 0
+          },
+          "status_code": 201,
+          "created_at": "within TTL"
+        }
+      },
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-conflict-003"
+        },
+        "body": {
+          "severity_id": 8003,
+          "clinician_esi": "ESI-2",
+          "reason_code": "Patient preference",
+          "note": "Different request."
+        }
+      },
+      "expect": {
+        "status_code": 409,
+        "error_code": "duplicate_request",
+        "no_override_row": true,
+        "clinician_ESI_unchanged": true
+      },
+      "_note": "Stored key's request_hash != hash of this body -> conflict. Nothing written."
+    },
+    {
+      "_name": "post_override_400_missing_key",
+      "_why": "No Idempotency-Key header -> IdempotencyKeyRequiredException -> 400 invalid_input with the Idempotency-Key field detail.",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8004,
+          "intake_id": 7004,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7004,
+          "patient_id": 303
+        }
+      },
+      "request": {
+        "headers": {},
+        "body": {
+          "severity_id": 8004,
+          "clinician_esi": "ESI-1",
+          "reason_code": "AI driver incorrect",
+          "note": null
+        }
+      },
+      "expect": {
+        "status_code": 400,
+        "error_code": "invalid_input",
+        "error_detail_field": "Idempotency-Key",
+        "no_override_row": true
+      },
+      "_note": "check_idempotency raises before any domain logic - the missing-header case fails fast."
+    },
+    {
+      "_name": "post_override_404_severity_not_found",
+      "_why": "Valid body + key, but severity_id doesn't exist -> SeverityNotFoundError -> 404 not_found. (Key check passes first; the 404 comes from applyOverride.)",
+      "seed": {},
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-404-005"
+        },
+        "body": {
+          "severity_id": 999999,
+          "clinician_esi": "ESI-1",
+          "reason_code": "Other",
+          "note": null
+        }
+      },
+      "expect": {
+        "status_code": 404,
+        "error_code": "not_found",
+        "error_message": "No severity with that id.",
+        "no_override_row": true
+      },
+      "_note": "Ordering: missing-key (400) is checked BEFORE severity lookup. Here the key is present, so we reach applyOverride and get 404."
+    },
+    {
+      "_name": "post_override_invalid_reason_code",
+      "_why": "reason_code not in ReasonCode enum -> request-body validation fails. Per the app's RequestValidationError normalization, returns 400 invalid_input (not 422).",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8006,
+          "intake_id": 7006,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7006,
+          "patient_id": 304
+        }
+      },
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-badreason-006"
+        },
+        "body": {
+          "severity_id": 8006,
+          "clinician_esi": "ESI-1",
+          "reason_code": "made_up_reason",
+          "note": null
+        }
+      },
+      "expect": {
+        "status_code": 400,
+        "error_code": "invalid_input",
+        "no_override_row": true
+      },
+      "_note": "Enum validation is body validation -> RequestValidationError -> normalized to 400 (same contract as other routes)."
+    },
+    {
+      "_name": "post_override_invalid_clinician_esi",
+      "_why": "clinician_esi not a valid ESILevels value (e.g. 'ESI-9') -> body validation fails -> 400 invalid_input. (Now caught because clinician_esi is an ESILevels enum, not a free string.)",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8007,
+          "intake_id": 7007,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7007,
+          "patient_id": 305
+        }
+      },
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-badesi-007"
+        },
+        "body": {
+          "severity_id": 8007,
+          "clinician_esi": "ESI-9",
+          "reason_code": "AI driver incorrect",
+          "note": null
+        }
+      },
+      "expect": {
+        "status_code": 400,
+        "error_code": "invalid_input",
+        "no_override_row": true
+      },
+      "_note": "ESILevels enum rejects ESI-9. Before the enum tightening this would have passed and blown up downstream."
+    },
+    {
+      "_name": "post_override_missing_severity_id",
+      "_why": "Body omits severity_id (required) -> body validation fails -> 400 invalid_input.",
+      "seed": {},
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-nosev-008"
+        },
+        "body": {
+          "clinician_esi": "ESI-1",
+          "reason_code": "AI driver incorrect",
+          "note": null
+        }
+      },
+      "expect": {
+        "status_code": 400,
+        "error_code": "invalid_input",
+        "no_override_row": true
+      }
+    },
+    {
+      "_name": "post_override_expired_key_reexecutes",
+      "_why": "Idempotency-Key exists but its created_at is older than IDEMPOTENCY_TTL (24h) -> check_idempotency treats it as absent -> applyOverride runs fresh; store_idempotency UPSERTS, resetting created_at.",
+      "seed": {
+        "patient_severity": {
+          "severity_id": 8009,
+          "intake_id": 7009,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "severity_score": 4,
+          "flag_tier": 3
+        },
+        "intake_record": {
+          "intake_id": 7009,
+          "patient_id": 306
+        },
+        "queue_seed": [
+          {
+            "intake_id": 7009,
+            "esi": "ESI-3",
+            "flag_tier": 3
+          }
+        ],
+        "idempotency_key_row": {
+          "idempotency_key": "key-expired-009",
+          "request_hash": "<any>",
+          "response_body": {
+            "stale": true
+          },
+          "status_code": 201,
+          "created_at": "25 hours ago (past TTL)"
+        }
+      },
+      "request": {
+        "headers": {
+          "Idempotency-Key": "key-expired-009"
+        },
+        "body": {
+          "severity_id": 8009,
+          "clinician_esi": "ESI-1",
+          "reason_code": "AI driver incorrect",
+          "note": null
+        }
+      },
+      "expect": {
+        "status_code": 201,
+        "applyOverride_called": true,
+        "override_persisted": true,
+        "idempotency_row_upserted": true,
+        "created_at_reset": true
+      },
+      "_note": "Past-TTL key is NOT replayed - it re-executes and the upsert overwrites the stale row (created_at resets)."
+    }
+  ]
+}

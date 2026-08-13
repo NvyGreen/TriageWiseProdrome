@@ -9,8 +9,9 @@ from .config import get_settings, Settings
 from .dependencies import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
-from .routers import patients, queue, intakes
-from .services.triage_service import IntakeNotFoundError, UnscoreableException
+from .routers import patients, queue, intakes, overrides
+from .services.idempotency import DuplicateRequestException, IdempotencyKeyRequiredException
+from .services.triage_service import IntakeNotFoundError, SeverityNotFoundError, UnscoreableException
 
 
 class MedicalDisclaimerResponse(JSONResponse):
@@ -42,6 +43,7 @@ app.add_middleware(
 patients_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 queue_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 intakes_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+overrides_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 
 
 async def validation_handler(request: Request, exc: RequestValidationError):
@@ -109,8 +111,7 @@ async def internal_server_error(request: Request, exc: HTTPException):
         )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-@patients_app.exception_handler(patients.IdempotencyKeyRequiredException)
-async def idempotency_key_required_handler(request: Request, exc: patients.IdempotencyKeyRequiredException):
+async def idempotency_key_required_handler(request: Request, exc: IdempotencyKeyRequiredException):
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
@@ -125,8 +126,7 @@ async def idempotency_key_required_handler(request: Request, exc: patients.Idemp
         }
     )
 
-@patients_app.exception_handler(patients.DuplicateRequestException)
-async def patient_duplicate_handler(request: Request, exc: patients.DuplicateRequestException):
+async def duplicate_request_handler(request: Request, exc: DuplicateRequestException):
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content={
@@ -163,13 +163,32 @@ async def intakes_not_found_handler(request: Request, exc: IntakeNotFoundError):
         }
     )
 
+@overrides_app.exception_handler(SeverityNotFoundError)
+async def severities_not_found_handler(request: Request, exc: SeverityNotFoundError):
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "error": {
+                "code": "not_found",
+                "message": "No severity with that id.",
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
 
-for sub_app in (patients_app, queue_app, intakes_app):
+
+for sub_app in (patients_app, queue_app, intakes_app, overrides_app):
     sub_app.add_exception_handler(HTTPException, internal_server_error)
 
-for sub_app in (patients_app, intakes_app):
+for sub_app in (patients_app, intakes_app, overrides_app):
     sub_app.add_exception_handler(RequestValidationError, validation_handler)
+
+for sub_app in (patients_app, intakes_app):
     sub_app.add_exception_handler(UnscoreableException, unscoreable_handler)
+
+for sub_app in (patients_app, overrides_app):
+    sub_app.add_exception_handler(IdempotencyKeyRequiredException, idempotency_key_required_handler)
+    sub_app.add_exception_handler(DuplicateRequestException, duplicate_request_handler)
 
 
 patients_app.include_router(patients.router)
@@ -180,6 +199,9 @@ app.mount("/queue", queue_app)
 
 intakes_app.include_router(intakes.router)
 app.mount("/intakes", intakes_app)
+
+overrides_app.include_router(overrides.router)
+app.mount("/overrides", overrides_app)
 
 
 @app.get("/")

@@ -24,6 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.idempotency_key import IdempotencyKey
 from app.schemas.intake_create import IntakeCreate
+from app.schemas.override_create import OverrideCreate
 
 # How long a stored key stays authoritative. Retries within this window replay;
 # after it, the key is fresh again.
@@ -39,7 +40,7 @@ class IdempotencyKeyRequiredException(Exception):
     """No Idempotency-Key header on a request that requires one -> 400."""
 
 
-def hash_payload(record: IntakeCreate) -> str:
+def hash_payload(record: IntakeCreate | OverrideCreate) -> str:
     """SHA-256 of the canonicalized *validated* model (64 hex chars).
 
     Hashing the validated model (not raw bytes) makes the hash independent of

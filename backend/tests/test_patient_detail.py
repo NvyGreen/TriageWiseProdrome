@@ -22,6 +22,7 @@ import pytest
 
 from app.models.ai_explanation import AIExplanation
 from app.models.intake_record import IntakeRecord
+from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.schemas.trigger_info import TriggerInfo
@@ -33,20 +34,6 @@ UNIT_CASES = Path(__file__).parent / "unit_cases"
 SERVICE_CASES = json.loads(
     (UNIT_CASES / "patient_detail_test_cases.json").read_text(encoding="utf-8")
 )["service_cases"]
-
-# Override composition isn't built yet (PatientDetail.override is hardcoded None),
-# so the override case can't pass — xfailed until the override route lands.
-OVERRIDE_CASE = "svc_override_present"
-
-
-def _param(case):
-    marks = (
-        [pytest.mark.xfail(reason="override composition not implemented; PatientDetail.override is hardcoded None")]
-        if case["_name"] == OVERRIDE_CASE
-        else []
-    )
-    return pytest.param(case, id=case["_name"], marks=marks)
-
 
 def _seed(db_session, seed):
     """Insert the case's rows with autoincrement PKs; return the real intake."""
@@ -96,11 +83,25 @@ def _seed(db_session, seed):
         gaps=ax["gaps"],
     )
     db_session.add(explanation)
+
+    if "override" in seed:
+        ov = seed["override"]
+        db_session.add(
+            Override(
+                intake_id=intake.intake_id,
+                severity_id=severity.severity_id,
+                system_ESI=ov["system_esi"],
+                clinician_ESI=ov["clinician_esi"],
+                reason_code=ov["reason_code"],
+                note=ov.get("note"),
+            )
+        )
+
     db_session.commit()
     return intake
 
 
-@pytest.mark.parametrize("case", [_param(c) for c in SERVICE_CASES])
+@pytest.mark.parametrize("case", SERVICE_CASES, ids=lambda c: c["_name"])
 def test_get_patient_detail_composition(case, db_session):
     expect = case["expect"]
     intake = _seed(db_session, case["seed"])

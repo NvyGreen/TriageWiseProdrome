@@ -16,6 +16,7 @@ from ..models.event_log import EventLog
 from ..models.case_update import CaseUpdate
 from ..models.ai_explanation import AIExplanation
 from ..models.red_flag_rule import RedFlagRule
+from ..models.override import Override
 
 from ..schemas.intake_create import IntakeCreate
 from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
@@ -23,6 +24,7 @@ from ..schemas.patient_info import PatientInfo
 from ..schemas.intake_info import IntakeInfo
 from ..schemas.severity_info import SeverityInfo
 from ..schemas.trigger_info import TriggerInfo
+from ..schemas.override_info import OverrideInfo
 
 from ..services.priority_queue import PriorityQueue
 from ..services.scoring_engine import ScoringEngine, CannotScoreError
@@ -38,6 +40,7 @@ from ..utils.explanation import Explanation
 from ..utils.trigger import Trigger
 from ..utils.dates import age_in_years
 from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS, LABEL_MAP
+from ..utils.enums import ReasonCode
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +70,11 @@ class IntakeNotFoundError(Exception):
 
 class UnscoreableException(Exception):
     pass
+
+
+class SeverityNotFoundError(Exception):
+    def __init__(self, severity_id: int):
+        self.severity_id = severity_id
 
 
 class TriageService:
@@ -389,7 +397,7 @@ class TriageService:
             raise UnscoreableException()
 
 
-    def getPatientDetail(self, intake_id: int):
+    def getPatientDetail(self, intake_id: int) -> PatientDetail:
         try:
             intake = self.db.get(IntakeRecord, intake_id)
             if intake is None:
@@ -492,6 +500,23 @@ class TriageService:
 
         lede = self._render_lede(severity, ai_explanation)
         dual_score_line, xai_line = self._render_dual_score(severity, ai_explanation)
+
+        try:
+            stmt = select(Override).where(Override.severity_id == severity.severity_id)
+            override = self.db.scalar(stmt)
+            override_info = None
+            if override is not None:
+                override_info = OverrideInfo(
+                    override_id=override.override_id,
+                    system_esi=override.system_ESI,
+                    clinician_esi=override.clinician_ESI,
+                    reason_code=override.reason_code,
+                    note=override.note
+                )
+        except (SQLAlchemyError, ValidationError) as e:
+            logger.exception("Getting override info failed")
+            raise HTTPException(status_code=500) from e
+
         return PatientDetail(
             patient=patient_info,
             intake=intake_info,
@@ -501,8 +526,77 @@ class TriageService:
             red_flags=triggers,
             lede=lede,
             dual_score_line=dual_score_line,
-            xai_line=xai_line
+            xai_line=xai_line,
+            override=override_info
         )
+
+
+    def applyOverride(self, severity_id: int, clinician_esi: str, reason_code: ReasonCode, note: str | None, queue: PriorityQueue) -> Result:
+        try:
+            severity = self.db.get(PatientSeverity, severity_id)
+            if severity is None:
+                raise SeverityNotFoundError(severity_id)
+            
+            old_esi = severity.clinician_ESI if severity.clinician_ESI is not None else severity.system_ESI
+            severity.clinician_ESI = clinician_esi
+            new_override = Override(
+                intake_id=severity.intake_id,
+                severity_id=severity_id,
+                system_ESI=severity.system_ESI,
+                clinician_ESI=clinician_esi,
+                reason_code=reason_code,
+                note=note
+            )
+
+            intake = self.db.get(IntakeRecord, severity.intake_id)
+            if intake is None:
+                raise HTTPException(status_code=500)
+            override_event = EventLog(
+                event_type=EventType.OVERRIDE_APPLIED,
+                patient_id=intake.patient_id,
+                intake_id=severity.intake_id,
+                details={
+                    "old_esi": old_esi,
+                    "new_esi": clinician_esi,
+                    "reason_code": reason_code
+                }
+            )
+
+            self.db.add(new_override)
+            self.db.add(override_event)
+            self.db.flush()
+
+            try:
+                old_position, new_position = queue.updatePatientPosition(severity.intake_id, int(clinician_esi[-1]), severity.flag_tier)
+            except ValueError as e:
+                self.db.rollback()
+                logger.exception("Intake wasn't in queue when it should be")
+                raise HTTPException(status_code=500) from e
+            
+            if old_position != new_position:
+                reprioritized_event = EventLog(
+                    event_type=EventType.REPRIORITIZED,
+                    patient_id=intake.patient_id,
+                    intake_id=severity.intake_id,
+                    details={
+                        "old_esi": old_esi,
+                        "old_flag_tier": severity.flag_tier,
+                        "new_esi": clinician_esi,
+                        "new_flag_tier": severity.flag_tier
+                    }
+                )
+                self.db.add(reprioritized_event)
+                self.db.flush()
+
+            return Result(
+                intake_id=severity.intake_id,
+                severity_score=int(severity.severity_score),
+                queue_placement=new_position
+            )
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.exception("Overriding failed")
+            raise HTTPException(status_code=500) from e
 
 
     def _render_lede(self, severity: PatientSeverity, explanation: AIExplanation) -> str:
@@ -551,7 +645,16 @@ class TriageService:
             return None, None
 
         score_line = f"System suggests: {severity.system_ESI}\nClinician score: {severity.clinician_ESI}"
-        # TODO: Once Override implemented, add override reason
+        try:
+            stmt = select(Override).where(Override.severity_id == severity.severity_id)
+            override = self.db.scalar(stmt)
+            if override is not None:
+                score_line += f"\nOverride reason: {override.reason_code}"
+                if override.note is not None:
+                    score_line += f" - '{override.note}'"
+        except SQLAlchemyError as e:
+            logger.exception("Could not get override info")
+            raise HTTPException(status_code=500) from e
 
         system_num = int(severity.system_ESI[-1])
         clinician_num = int(severity.clinician_ESI[-1])

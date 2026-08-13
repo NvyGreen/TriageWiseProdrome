@@ -2,7 +2,7 @@ from datetime import date
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from ..utils.dates import age_in_years
-from ..utils.intake_enums import ChiefComplaint, PreExistingConditions, PregnancyStatus, Sex
+from ..utils.enums import ChiefComplaint, PreExistingConditions, PregnancyStatus, Sex
 
 
 

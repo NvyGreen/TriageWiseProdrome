@@ -1,0 +1,303 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — applyOverride cases (req R4 + R2 queue effect)",
+    "validates": "TriageService.applyOverride(severity_id, clinician_esi, reason_code, note, queue) -> Result. Persists override, sets clinician_ESI, fires override_applied, repositions queue + fires reprioritized ON REAL MOVEMENT, returns Result.",
+    "nature": "INTEGRATION. Seed a scored patient (+ patient_severity) and a pre-populated queue, call applyOverride, assert: Result, clinician_ESI mutation, override row, events, queue movement. Queue must be pre-seeded with fillers so movement (or non-movement) is deterministic.",
+    "key_behaviors": [
+      "old_esi = clinician_ESI if a prior override exists, else system_ESI (guards double-override).",
+      "override.system_ESI always records the ORIGINAL system value, even on re-override.",
+      "reprioritized fires ONLY when old_position != new_position (real order change).",
+      "override_applied fires on EVERY successful override.",
+      "note is nullable.",
+      "SeverityNotFoundError when severity_id missing -> no writes.",
+      "Result carries intake_id, severity_score (unchanged - override never touches the score), queue_placement (new position).",
+      "reason_code is a StrEnum whose VALUE is a human-readable string (e.g. 'AI driver incorrect') - that value is what serializes into the event details JSONB and the override row, NOT the member name.",
+      "Result is a dataclass(intake_id, severity_score, queue_placement) - all int|None. severity_score is int (unchanged by override)."
+    ],
+    "esi_acuity": "Lower ESI number = MORE acute (ESI-1 most). More-acute override moves patient FORWARD; less-acute moves BACKWARD.",
+    "reason_codes": [
+      "Clinical info AI lacks",
+      "AI driver incorrect",
+      "Patient preference",
+      "Other"
+    ]
+  },
+  "cases": [
+    {
+      "_name": "override_moves_patient_fires_reprioritized",
+      "_why": "Patient scored ESI-3 sits behind an ESI-2 filler in the queue. Clinician overrides to ESI-1 (more acute) -> patient moves ahead of the filler. old_position != new_position, so reprioritized fires. Both override_applied and reprioritized logged; clinician_ESI set; Result.queue_placement = new (forward) position.",
+      "seed": {
+        "patient": {
+          "patient_id": 200,
+          "name": "Override Patient A",
+          "date_of_birth": "1960-01-01",
+          "sex": "M"
+        },
+        "intake_record": {
+          "intake_id": 6001,
+          "patient_id": 200,
+          "chief_complaint": "cardiac"
+        },
+        "patient_severity": {
+          "severity_id": 7001,
+          "intake_id": 6001,
+          "severity_score": 4,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "flag_tier": 3,
+          "red_flags": []
+        },
+        "queue_seed": [
+          {
+            "intake_id": 6009,
+            "esi": "ESI-2",
+            "flag_tier": 3,
+            "arrival": "earlier",
+            "_role": "filler ahead of target initially"
+          },
+          {
+            "intake_id": 6001,
+            "esi": "ESI-3",
+            "flag_tier": 3,
+            "arrival": "later",
+            "_role": "target - starts behind the ESI-2 filler"
+          }
+        ]
+      },
+      "call": {
+        "severity_id": 7001,
+        "clinician_esi": "ESI-1",
+        "reason_code": "AI driver incorrect",
+        "note": "Clear STEMI on ECG."
+      },
+      "expect": {
+        "returns_Result": true,
+        "result_intake_id": 6001,
+        "result_severity_score": 4,
+        "clinician_ESI_set_to": "ESI-1",
+        "override_row_persisted": true,
+        "override_system_ESI": "ESI-3",
+        "override_clinician_esi": "ESI-1",
+        "override_reason_code": "AI driver incorrect",
+        "override_note": "Clear STEMI on ECG.",
+        "events_logged": [
+          "override_applied",
+          "reprioritized"
+        ],
+        "override_applied_details": {
+          "old_esi": "ESI-3",
+          "new_esi": "ESI-1",
+          "reason_code": "AI driver incorrect"
+        },
+        "reprioritized_details": {
+          "old_esi": "ESI-3",
+          "old_flag_tier": 3,
+          "new_esi": "ESI-1",
+          "new_flag_tier": 3
+        },
+        "position_changed": true
+      },
+      "_note": "old_esi in both events = system_ESI (no prior override). Patient moves ESI-3 -> ESI-1, crossing the ESI-2 filler."
+    },
+    {
+      "_name": "override_same_band_no_reprioritized",
+      "_why": "Patient is alone in the queue (or clinician_esi keeps the same ordering slot). updatePatientPosition returns old == new -> reprioritized does NOT fire. override_applied still fires; clinician_ESI still set; Result returned.",
+      "seed": {
+        "patient": {
+          "patient_id": 201,
+          "name": "Override Patient B",
+          "date_of_birth": "1970-05-05",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 6002,
+          "patient_id": 201,
+          "chief_complaint": "respiratory"
+        },
+        "patient_severity": {
+          "severity_id": 7002,
+          "intake_id": 6002,
+          "severity_score": 5,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": null,
+          "flag_tier": 3,
+          "red_flags": []
+        },
+        "queue_seed": [
+          {
+            "intake_id": 6002,
+            "esi": "ESI-3",
+            "flag_tier": 3,
+            "arrival": "only",
+            "_role": "alone - nothing to cross"
+          }
+        ]
+      },
+      "call": {
+        "severity_id": 7002,
+        "clinician_esi": "ESI-4",
+        "reason_code": "Patient preference",
+        "note": null
+      },
+      "expect": {
+        "returns_Result": true,
+        "clinician_ESI_set_to": "ESI-4",
+        "override_row_persisted": true,
+        "override_note": null,
+        "events_logged": [
+          "override_applied"
+        ],
+        "event_NOT_logged": "reprioritized",
+        "position_changed": false
+      },
+      "_note": "Only patient in queue -> position can't change -> no reprioritized. note is None (nullable). override_applied still fires."
+    },
+    {
+      "_name": "severity_not_found_raises",
+      "_why": "Unknown severity_id -> SeverityNotFoundError; nothing written, no events, no override row.",
+      "seed": {},
+      "call": {
+        "severity_id": 999999,
+        "clinician_esi": "ESI-2",
+        "reason_code": "Other",
+        "note": null
+      },
+      "expect": {
+        "raises": "SeverityNotFoundError",
+        "override_row_persisted": false,
+        "no_events_logged": true,
+        "clinician_ESI_unchanged": true
+      }
+    },
+    {
+      "_name": "second_override_old_esi_is_prior_clinician",
+      "_why": "A patient already overridden once (clinician_ESI = ESI-2) is overridden again to ESI-1. old_esi in the events must be the PRIOR clinician value (ESI-2), NOT system_ESI (ESI-3). Guards the old_esi = clinician-if-present logic.",
+      "seed": {
+        "patient": {
+          "patient_id": 202,
+          "name": "Override Patient C",
+          "date_of_birth": "1958-03-03",
+          "sex": "M"
+        },
+        "intake_record": {
+          "intake_id": 6003,
+          "patient_id": 202,
+          "chief_complaint": "cardiac"
+        },
+        "patient_severity": {
+          "severity_id": 7003,
+          "intake_id": 6003,
+          "severity_score": 4,
+          "system_ESI": "ESI-3",
+          "clinician_ESI": "ESI-2",
+          "flag_tier": 3,
+          "red_flags": []
+        },
+        "queue_seed": [
+          {
+            "intake_id": 6019,
+            "esi": "ESI-1",
+            "flag_tier": 3,
+            "arrival": "later",
+            "_role": "filler ahead"
+          },
+          {
+            "intake_id": 6003,
+            "esi": "ESI-2",
+            "flag_tier": 3,
+            "arrival": "earlier",
+            "_role": "target at prior clinician ESI-2"
+          }
+        ]
+      },
+      "call": {
+        "severity_id": 7003,
+        "clinician_esi": "ESI-1",
+        "reason_code": "Clinical info AI lacks",
+        "note": "Family reports sudden onset."
+      },
+      "expect": {
+        "returns_Result": true,
+        "clinician_ESI_set_to": "ESI-1",
+        "override_system_ESI": "ESI-3",
+        "override_clinician_esi": "ESI-1",
+        "override_applied_details": {
+          "old_esi": "ESI-2",
+          "new_esi": "ESI-1",
+          "reason_code": "Clinical info AI lacks"
+        },
+        "events_logged": [
+          "override_applied",
+          "reprioritized"
+        ],
+        "reprioritized_old_esi": "ESI-2",
+        "position_changed": true
+      },
+      "_note": "old_esi = ESI-2 (prior clinician), NOT ESI-3 (system). override.system_ESI still records the ORIGINAL system value (ESI-3)."
+    },
+    {
+      "_name": "override_less_acute_downgrade",
+      "_why": "Clinician downgrades: system ESI-2, clinician overrides to ESI-3 (less acute). clinician_ESI set, override persisted. If it moves the patient back past a filler, reprioritized fires.",
+      "seed": {
+        "patient": {
+          "patient_id": 203,
+          "name": "Override Patient D",
+          "date_of_birth": "1990-07-07",
+          "sex": "F"
+        },
+        "intake_record": {
+          "intake_id": 6004,
+          "patient_id": 203,
+          "chief_complaint": "general"
+        },
+        "patient_severity": {
+          "severity_id": 7004,
+          "intake_id": 6004,
+          "severity_score": 6,
+          "system_ESI": "ESI-2",
+          "clinician_ESI": null,
+          "flag_tier": 3,
+          "red_flags": []
+        },
+        "queue_seed": [
+          {
+            "intake_id": 6004,
+            "esi": "ESI-2",
+            "flag_tier": 3,
+            "arrival": "later",
+            "_role": "target ahead initially"
+          },
+          {
+            "intake_id": 6029,
+            "esi": "ESI-3",
+            "flag_tier": 3,
+            "arrival": "earlier",
+            "_role": "filler behind - target downgrades past it"
+          }
+        ]
+      },
+      "call": {
+        "severity_id": 7004,
+        "clinician_esi": "ESI-3",
+        "reason_code": "AI driver incorrect",
+        "note": "Overweighted borderline HR."
+      },
+      "expect": {
+        "returns_Result": true,
+        "clinician_ESI_set_to": "ESI-3",
+        "override_clinician_esi": "ESI-3",
+        "override_applied_details": {
+          "old_esi": "ESI-2",
+          "new_esi": "ESI-3",
+          "reason_code": "AI driver incorrect"
+        },
+        "events_logged": [
+          "override_applied",
+          "reprioritized"
+        ],
+        "position_changed": true
+      },
+      "_note": "Downgrade is valid - clinician can lower acuity. Movement direction is backward; reprioritized still fires on any real change."
+    }
+  ]
+}

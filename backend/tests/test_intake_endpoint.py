@@ -31,6 +31,7 @@ from app.models.ai_explanation import AIExplanation
 from app.models.case_update import CaseUpdate
 from app.models.event_log import EventLog
 from app.models.intake_record import IntakeRecord
+from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
@@ -359,18 +360,6 @@ def test_clinical_update_raises_esi(client, db_session, queue_override):
 # lives in test_patient_detail.py. Success bodies are wrapped under "payload" by
 # MedicalDisclaimerResponse; errors render the envelope as-is.
 # ---------------------------------------------------------------------------
-DETAIL_OVERRIDE_CASE = "ep_xai_override_present"
-
-
-def _detail_param(case):
-    marks = (
-        [pytest.mark.xfail(reason="override composition not implemented; PatientDetail.override is hardcoded None")]
-        if case["_name"] == DETAIL_OVERRIDE_CASE
-        else []
-    )
-    return pytest.param(case, id=case["_name"], marks=marks)
-
-
 def _seed_detail(db_session, seed):
     """Seed patient + intake + severity + ai_explanation; return the real intake_id.
 
@@ -426,11 +415,25 @@ def _seed_detail(db_session, seed):
             gaps=ax["gaps"],
         )
     )
+
+    if "override" in seed:
+        ov = seed["override"]
+        db_session.add(
+            Override(
+                intake_id=intake.intake_id,
+                severity_id=severity.severity_id,
+                system_ESI=ov["system_esi"],
+                clinician_ESI=ov["clinician_esi"],
+                reason_code=ov["reason_code"],
+                note=ov.get("note"),
+            )
+        )
+
     db_session.commit()
     return intake.intake_id
 
 
-@pytest.mark.parametrize("case", [_detail_param(c) for c in DETAIL_CASES])
+@pytest.mark.parametrize("case", DETAIL_CASES, ids=lambda c: c["_name"])
 def test_patient_detail_endpoint(case, client, db_session):
     call = case["call"]
     expect = case["expect"]

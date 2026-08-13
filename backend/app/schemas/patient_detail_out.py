@@ -11,6 +11,11 @@ Design:
     trees).
 
 Mode gating lives in one place: PatientDetailOut.from_detail.
+
+Dual-score (R2): the two ESI numbers ("System suggests X / Clinician score Y")
+carry no driver info, so `dual_score_line` is shown in BOTH modes. The
+`xai_line` NAMES the delta drivers ("System weighted chest pain + SpO2 ..."),
+which is reasoning — so it is XAI-only.
 """
 
 from enum import Enum
@@ -18,7 +23,7 @@ from enum import Enum
 from pydantic import BaseModel
 
 from ..utils.dates import age_in_years
-from ..utils.vitals import LABEL_MAP
+from ..utils.constants import LABEL_MAP
 
 
 class Mode(str, Enum):
@@ -107,6 +112,9 @@ class PatientDetailOut(BaseModel):
     severity_score: float
     system_esi: str
     band_name: str
+    # dual-score numbers carry no driver info -> safe in both modes.
+    # None when no clinician_ESI was supplied (omitted by exclude_none).
+    dual_score_line: str | None = None
 
     # --- xai-only (omitted in black-box via exclude_none) ---
     lede: str | None = None
@@ -114,9 +122,11 @@ class PatientDetailOut(BaseModel):
     explanation: ExplanationOut | None = None
     red_flags: list[RedFlagOut] | None = None
     override: OverrideOut | None = None
+    # xai_line NAMES delta drivers -> reasoning -> XAI only.
+    dual_score_detail: str | None = None
 
     @classmethod
-    def from_detail(cls, detail, mode: Mode) -> "PatientDetailOut":
+    def from_detail(cls, detail, mode: str | Mode) -> "PatientDetailOut":
         base = dict(
             patient_name=detail.patient.name,
             age=age_in_years(detail.patient.date_of_birth),
@@ -124,14 +134,16 @@ class PatientDetailOut(BaseModel):
             severity_score=detail.severity.severity_score,
             system_esi=detail.severity.system_ESI,
             band_name=LABEL_MAP[detail.severity.system_ESI],
+            # numbers-only dual score: both modes (None -> omitted)
+            dual_score_line=detail.dual_score_line,
         )
 
-        # Black-box: score + level only. Reasoning fields stay None and are
-        # dropped by exclude_none — they never leave the server.
+        # Black-box: score + level (+ dual-score numbers) only. Reasoning fields
+        # stay None and are dropped by exclude_none — never leave the server.
         if mode == Mode.BLACKBOX:
             return cls(**base)
 
-        # XAI: attach the full reasoning.
+        # XAI: attach the full reasoning, including the driver-naming dual line.
         return cls(
             **base,
             lede=detail.lede,
@@ -143,4 +155,5 @@ class PatientDetailOut(BaseModel):
                 if detail.override is not None
                 else None
             ),
+            dual_score_detail=detail.xai_line,
         )

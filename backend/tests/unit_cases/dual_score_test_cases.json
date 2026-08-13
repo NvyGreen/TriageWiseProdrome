@@ -1,0 +1,218 @@
+{
+  "_meta": {
+    "title": "TriageWiseProdrome — dual-score rendering cases (req R2)",
+    "validates": "TriageService._render_dual_score(severity, explanation) -> (dual_score_line, xai_line). The disagreement display: score_line (both modes) + xai_line (delta prose, xai only).",
+    "nature": "Pure-function. Feed system_ESI + clinician_ESI + factor_breakdown; assert the two returned strings exactly.",
+    "conventions": [
+      "ESI numbers are INVERTED: lower number = MORE acute (ESI-1 most acute).",
+      "system MORE acute (system_num < clinician_num) OR equal -> xai_line names the minimal-crossing delta driver set.",
+      "clinician MORE acute (system_num > clinician_num) -> xai_line = 'Your {clinician_ESI} takes precedence.' (no drivers).",
+      "clinician_ESI None -> (None, None).",
+      "delta set: sort drivers by weight desc, accumulate until score >= ESI_THRESHOLDS[system_ESI]. Chief complaint renders patient_value; vitals render '{factor} {patient_value}'.",
+      "score_line always 'System suggests: {system}\\nClinician score: {clinician}' when clinician present."
+    ],
+    "esi_thresholds": {
+      "ESI-1": 8,
+      "ESI-2": 6,
+      "ESI-3": 3,
+      "ESI-4": 1,
+      "ESI-5": 0
+    }
+  },
+  "cases": [
+    {
+      "_name": "system_more_acute_delta_drivers",
+      "_why": "System ESI-1 more acute than clinician ESI-2 (lower number = more acute). Shows delta prose naming the minimal-crossing driver set. Robert: chest pain(6)+SpO2(4)=10 >= thr 8, so top 2 drivers; HR and RR excluded.",
+      "inputs": {
+        "system_ESI": "ESI-1",
+        "clinician_ESI": "ESI-2",
+        "factor_breakdown": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "threshold": "chest pain (cardiac concern)",
+            "weight": 6,
+            "patient_value": "chest pain",
+            "contribution_pct": 43
+          },
+          {
+            "rule_id": 1,
+            "factor": "SpO2",
+            "threshold": "< 92%",
+            "weight": 4,
+            "patient_value": "93%",
+            "contribution_pct": 29
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "threshold": "> 120 bpm",
+            "weight": 3,
+            "patient_value": "128",
+            "contribution_pct": 21
+          },
+          {
+            "rule_id": 5,
+            "factor": "Respiratory rate",
+            "threshold": "> 24",
+            "weight": 1,
+            "patient_value": "22",
+            "contribution_pct": 7
+          }
+        ]
+      },
+      "expect": {
+        "dual_score_line": "System suggests: ESI-1\nClinician score: ESI-2",
+        "xai_line": "System weighted chest pain + SpO2 93% as ESI-1. Confirm these were considered.",
+        "_note": "Minimal-crossing set = chest pain + SpO2 (weights 6+4=10 crosses ESI-1 thr 8). HR(3), RR(1) NOT included though they fired - they don't account for the band."
+      }
+    },
+    {
+      "_name": "clinician_more_acute_takes_precedence",
+      "_why": "Clinician ESI-1 more acute than system ESI-3. No delta prose - clinician's higher acuity wins outright.",
+      "inputs": {
+        "system_ESI": "ESI-3",
+        "clinician_ESI": "ESI-1",
+        "factor_breakdown": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "threshold": "chest pain (cardiac concern)",
+            "weight": 6,
+            "patient_value": "chest pain",
+            "contribution_pct": 43
+          },
+          {
+            "rule_id": 1,
+            "factor": "SpO2",
+            "threshold": "< 92%",
+            "weight": 4,
+            "patient_value": "93%",
+            "contribution_pct": 29
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "threshold": "> 120 bpm",
+            "weight": 3,
+            "patient_value": "128",
+            "contribution_pct": 21
+          },
+          {
+            "rule_id": 5,
+            "factor": "Respiratory rate",
+            "threshold": "> 24",
+            "weight": 1,
+            "patient_value": "22",
+            "contribution_pct": 7
+          }
+        ]
+      },
+      "expect": {
+        "dual_score_line": "System suggests: ESI-3\nClinician score: ESI-1",
+        "xai_line": "Your ESI-1 takes precedence.",
+        "_note": "system_num(3) > clinician_num(1) -> 'takes precedence', no driver naming."
+      }
+    },
+    {
+      "_name": "clinician_null_returns_none",
+      "_why": "No clinician_ESI supplied -> both lines None (dual-score absent entirely).",
+      "inputs": {
+        "system_ESI": "ESI-2",
+        "clinician_ESI": null,
+        "factor_breakdown": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "threshold": "chest pain (cardiac concern)",
+            "weight": 6,
+            "patient_value": "chest pain",
+            "contribution_pct": 43
+          },
+          {
+            "rule_id": 1,
+            "factor": "SpO2",
+            "threshold": "< 92%",
+            "weight": 4,
+            "patient_value": "93%",
+            "contribution_pct": 29
+          },
+          {
+            "rule_id": 3,
+            "factor": "Heart rate",
+            "threshold": "> 120 bpm",
+            "weight": 3,
+            "patient_value": "128",
+            "contribution_pct": 21
+          },
+          {
+            "rule_id": 5,
+            "factor": "Respiratory rate",
+            "threshold": "> 24",
+            "weight": 1,
+            "patient_value": "22",
+            "contribution_pct": 7
+          }
+        ]
+      },
+      "expect": {
+        "dual_score_line": null,
+        "xai_line": null
+      }
+    },
+    {
+      "_name": "refined_system_small_delta",
+      "_why": "Refined case: system ESI-4 (thr 1), clinician ESI-5. System more acute. delta crosses thr 1 with the single top driver.",
+      "inputs": {
+        "system_ESI": "ESI-4",
+        "clinician_ESI": "ESI-5",
+        "factor_breakdown": [
+          {
+            "rule_id": 12,
+            "factor": "Chief complaint",
+            "threshold": "abdominal pain",
+            "weight": 1,
+            "patient_value": "abdominal pain",
+            "contribution_pct": 50
+          },
+          {
+            "rule_id": 4,
+            "factor": "Heart rate",
+            "threshold": "100-120 bpm",
+            "weight": 1,
+            "patient_value": "105",
+            "contribution_pct": 50
+          }
+        ]
+      },
+      "expect": {
+        "dual_score_line": "System suggests: ESI-4\nClinician score: ESI-5",
+        "xai_line": "System weighted abdominal pain as ESI-4. Confirm these were considered.",
+        "_note": "Refined band: thr is low (1), so one driver crosses. Truthful tiny delta set - points weren't why they're 'only' ESI-4."
+      }
+    },
+    {
+      "_name": "single_driver_complaint_only",
+      "_why": "Complaint-only patient, system ESI-2 more acute than clinician ESI-3. delta = just the complaint's patient_value.",
+      "inputs": {
+        "system_ESI": "ESI-2",
+        "clinician_ESI": "ESI-3",
+        "factor_breakdown": [
+          {
+            "rule_id": 9,
+            "factor": "Chief complaint",
+            "threshold": "chest pain (cardiac concern)",
+            "weight": 6,
+            "patient_value": "cardiac",
+            "contribution_pct": 100
+          }
+        ]
+      },
+      "expect": {
+        "dual_score_line": "System suggests: ESI-2\nClinician score: ESI-3",
+        "xai_line": "System weighted cardiac as ESI-2. Confirm these were considered.",
+        "_note": "Complaint driver renders patient_value ('cardiac'), not factor label."
+      }
+    }
+  ]
+}

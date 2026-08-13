@@ -14,7 +14,7 @@ from ..models.red_flag_rule import RedFlagRule
 
 from ..utils.severity_result import SeverityResult
 from ..utils.explanation import Explanation
-from ..utils.vitals import VITAL_MAP
+from ..utils.constants import VITAL_MAP
 
 
 BEYOND_THE_DATA = "Appearance, work of breathing, distress, social context, staffing - outside this engine."

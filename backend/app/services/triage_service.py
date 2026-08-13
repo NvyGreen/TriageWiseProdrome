@@ -37,7 +37,7 @@ from ..utils.patient_detail import PatientDetail
 from ..utils.explanation import Explanation
 from ..utils.trigger import Trigger
 from ..utils.dates import age_in_years
-from ..utils.vitals import VITAL_MAP, TOTAL_VITALS, LABEL_MAP
+from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS, LABEL_MAP
 
 
 logger = logging.getLogger(__name__)
@@ -491,6 +491,7 @@ class TriageService:
             raise HTTPException(status_code=500) from e
 
         lede = self._render_lede(severity, ai_explanation)
+        dual_score_line, xai_line = self._render_dual_score(severity, ai_explanation)
         return PatientDetail(
             patient=patient_info,
             intake=intake_info,
@@ -498,7 +499,9 @@ class TriageService:
             severity=severity_info,
             explanation=explanation,
             red_flags=triggers,
-            lede=lede
+            lede=lede,
+            dual_score_line=dual_score_line,
+            xai_line=xai_line
         )
 
 
@@ -541,3 +544,36 @@ class TriageService:
             coverage_clause += f"{"; ".join(fallbacks)}."
 
         return lede + coverage_clause
+
+
+    def _render_dual_score(self, severity: PatientSeverity, explanation: AIExplanation) -> tuple[str | None, str | None]:
+        if severity.clinician_ESI is None:
+            return None, None
+
+        score_line = f"System suggests: {severity.system_ESI}\nClinician score: {severity.clinician_ESI}"
+        # TODO: Once Override implemented, add override reason
+
+        system_num = int(severity.system_ESI[-1])
+        clinician_num = int(severity.clinician_ESI[-1])
+
+        if system_num > clinician_num:
+            xai_line = f"Your {severity.clinician_ESI} takes precedence."
+        else:
+            drivers = [Driver(**d) for d in explanation.factor_breakdown]
+            drivers.sort(key=lambda d: d.weight, reverse=True)
+
+            i, score = 0, 0
+            delta_drivers = []
+            while i < len(drivers) and score < ESI_THRESHOLDS[severity.system_ESI]:
+                score += drivers[i].weight
+                if drivers[i].factor == "Chief complaint":
+                    delta_drivers.append(drivers[i].patient_value)
+                else:
+                    delta_drivers.append(f"{drivers[i].factor} {drivers[i].patient_value}")
+
+                i += 1
+
+            joined = " + ".join(delta_drivers)
+            xai_line = f"System weighted {joined} as {severity.system_ESI}. Confirm these were considered."
+
+        return score_line, xai_line

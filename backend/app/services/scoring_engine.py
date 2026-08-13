@@ -17,13 +17,8 @@ from ..services.red_flag_layer import RedFlagLayer
 from ..utils.rule import Rule
 from ..utils.driver import Driver
 from ..utils.severity_result import SeverityResult
-from ..utils.vitals import VITAL_MAP, TOTAL_VITALS
+from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS
 
-
-ESI_1_THRESHOLD = 8
-ESI_2_THRESHOLD = 6
-ESI_3_THRESHOLD = 3
-ESI_4_THRESHOLD = 1
 
 class ESILevels(StrEnum):
     ESI_1 = "ESI-1"
@@ -126,13 +121,13 @@ class ScoringEngine:
             raise CannotScoreError("The intake is valid but cannot be scored")
         
         initial_esi = ""
-        if points >= ESI_1_THRESHOLD:
+        if points >= ESI_THRESHOLDS["ESI-1"]:
             initial_esi = ESILevels.ESI_1
-        elif points >= ESI_2_THRESHOLD:
+        elif points >= ESI_THRESHOLDS["ESI-2"]:
             initial_esi = ESILevels.ESI_2
-        elif points >= ESI_3_THRESHOLD:
+        elif points >= ESI_THRESHOLDS["ESI-3"]:
             initial_esi = ESILevels.ESI_3
-        elif points >= ESI_4_THRESHOLD:
+        elif points >= ESI_THRESHOLDS["ESI-4"]:
             initial_esi = ESILevels.ESI_4
         else:
             initial_esi = ESILevels.ESI_5

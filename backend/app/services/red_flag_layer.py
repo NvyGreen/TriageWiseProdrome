@@ -15,7 +15,7 @@ from ..utils.trigger import Trigger
 from ..utils.severity_result import SeverityResult
 from ..utils.driver import Driver
 from ..utils.dates import age_in_years, age_in_days
-from ..utils.vitals import VITAL_MAP
+from ..utils.constants import VITAL_MAP
 
 
 logger = logging.getLogger(__name__)

@@ -15,3 +15,11 @@ LABEL_MAP = {
     "ESI-4": "Less urgent",
     "ESI-5": "Non-urgent"
 }
+
+ESI_THRESHOLDS = {
+    "ESI-1": 8,
+    "ESI-2": 6,
+    "ESI-3": 3,
+    "ESI-4": 1,
+    "ESI-5": 0
+}

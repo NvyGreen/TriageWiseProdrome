@@ -17,5 +17,7 @@ class PatientDetail:
     explanation: Explanation
     red_flags: list[TriggerInfo]
     lede: str
+    dual_score_line: str | None = None
+    xai_line: str | None = None
     # TODO: Add Override once implemented
     override: None = None

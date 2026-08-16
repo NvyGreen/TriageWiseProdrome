@@ -44,6 +44,19 @@ def _wait_until_up(url: str, timeout: float) -> bool:
     return False
 
 
+def _wait_until_down(url: str, timeout: float) -> bool:
+    """Wait until nothing answers at url — so a restarted backend can rebind 8000."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1):
+                pass
+        except Exception:
+            return True
+        time.sleep(0.3)
+    return False
+
+
 def _kill_tree(proc: subprocess.Popen) -> None:
     # Windows-robust: kill the whole process tree (npm -> node, python -> uvicorn).
     subprocess.run(
@@ -52,31 +65,40 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def servers():
-    """Start the backend (uvicorn) and frontend (vite) for the whole session."""
-    be_log = open(_LOG_DIR / "e2e_backend.log", "w")
+def frontend():
+    """Vite dev server for the whole session (stateless SPA, no per-test reset)."""
     fe_log = open(_LOG_DIR / "e2e_frontend.log", "w")
-
-    backend = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"],
-        cwd=str(BACKEND_DIR), stdout=be_log, stderr=subprocess.STDOUT,
-    )
-    frontend = subprocess.Popen(
+    proc = subprocess.Popen(
         "npm run dev", cwd=str(FRONTEND_DIR), shell=True,
         stdout=fe_log, stderr=subprocess.STDOUT,
     )
-
     try:
-        if not _wait_until_up(f"{BACKEND_URL}/intakes/test", timeout=45):
-            raise RuntimeError(f"backend did not start; see {_LOG_DIR / 'e2e_backend.log'}")
         if not _wait_until_up(FRONTEND_URL, timeout=60):
             raise RuntimeError(f"frontend did not start; see {_LOG_DIR / 'e2e_frontend.log'}")
         yield
     finally:
-        _kill_tree(frontend)
-        _kill_tree(backend)
-        be_log.close()
+        _kill_tree(proc)
         fe_log.close()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def backend(frontend):
+    """A FRESH backend per test module — the in-memory queue is a process-level
+    singleton with no reset, so each file must start with an empty queue (and its
+    orphaned queue entries die with the process on teardown)."""
+    be_log = open(_LOG_DIR / "e2e_backend.log", "w")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"],
+        cwd=str(BACKEND_DIR), stdout=be_log, stderr=subprocess.STDOUT,
+    )
+    try:
+        if not _wait_until_up(f"{BACKEND_URL}/intakes/test", timeout=45):
+            raise RuntimeError(f"backend did not start; see {_LOG_DIR / 'e2e_backend.log'}")
+        yield
+    finally:
+        _kill_tree(proc)
+        _wait_until_down(f"{BACKEND_URL}/intakes/test", timeout=10)  # free 8000 for the next module
+        be_log.close()
 
 
 def _purge_test_rows(idempotency_keys: list[str]) -> None:

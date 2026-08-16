@@ -21,6 +21,8 @@ import { useId } from 'react';
  * @param {boolean} [props.required] - marks the field with a red asterisk
  * @param {string} [props.hint] - small helper text under the field
  * @param {string} [props.error] - validation message; also flags the input invalid
+ * @param {string} [props.ariaLabel] - accessible name when there is no visible label
+ * @param {boolean} [props.disabled] - blocks selection
  * @param {React.ElementType} [props.icon] - leading icon component
  */
 export default function Dropdown({
@@ -33,6 +35,8 @@ export default function Dropdown({
     required = false,
     hint,
     error,
+    ariaLabel,
+    disabled = false,
     icon: Icon
 }) {
     const id = useId();
@@ -48,6 +52,10 @@ export default function Dropdown({
             name={name}
             value={value}
             onChange={handleChange}
+            disabled={disabled}
+            // A visible label should win, so that what a voice-control user
+            // says matches what they can see.
+            aria-label={dropdownLabel ? undefined : ariaLabel}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
         >

@@ -58,7 +58,9 @@ def test_single_entry_has_patient_details(db_session):
     entry = entries[0]
     assert entry.position == 1
     assert entry.patient_id == patient.patient_id
+    assert entry.intake_id == intake.intake_id
     assert entry.name == "Solo Patient"
+    assert entry.sex == "M"
     # Computed, never hardcoded — a literal would rot on the patient's birthday.
     assert entry.age == age_in_years(dob)
 
@@ -96,6 +98,7 @@ def test_no_severity_row_yields_none_fields(db_session):
     assert entry.esi_level is None
     assert entry.priority_label is None
     assert entry.severity_score is None
+    assert entry.flag_tier is None
 
 
 def test_missing_intake_raises_500(db_session):

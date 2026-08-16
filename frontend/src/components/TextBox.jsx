@@ -14,6 +14,7 @@ import { useId } from 'react';
  * @param {boolean} [props.required] - marks the field with a red asterisk
  * @param {string} [props.hint] - small helper text under the field
  * @param {string} [props.error] - validation message; also flags the input invalid
+ * @param {string} [props.ariaLabel] - accessible name when there is no visible label
  * @param {React.ElementType} [props.icon] - leading icon component
  * @param {number} [props.min] - numeric/date lower bound
  * @param {number} [props.max] - numeric/date upper bound
@@ -30,6 +31,7 @@ export default function TextBox({
     required = false,
     hint,
     error,
+    ariaLabel,
     icon: Icon,
     min,
     max,
@@ -56,6 +58,9 @@ export default function TextBox({
             max={max}
             step={step}
             maxLength={maxLength}
+            // A visible label should win, so that what a voice-control user
+            // says matches what they can see.
+            aria-label={boxLabel ? undefined : ariaLabel}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : hint ? hintId : undefined}
         />
@@ -63,10 +68,12 @@ export default function TextBox({
 
     return (
         <div className='field'>
-            <label className='lbl' htmlFor={id}>
-                {boxLabel}
-                {required && <span className='req'> *</span>}
-            </label>
+            {boxLabel && (
+                <label className='lbl' htmlFor={id}>
+                    {boxLabel}
+                    {required && <span className='req'> *</span>}
+                </label>
+            )}
 
             {Icon ? (
                 <div className='withicon'>

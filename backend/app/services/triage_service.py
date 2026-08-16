@@ -206,6 +206,7 @@ class TriageService:
             esi_level = row.esi_level
             priority_label = row.priority
             severity_score = severity.severity_score if severity is not None else None
+            flag_tier = severity.flag_tier if severity is not None else None
             if severity is not None and priority_label is None:
                 logger.error("esi_level wasn't in database when it should be")
                 raise HTTPException(status_code=500)
@@ -213,9 +214,12 @@ class TriageService:
             entry = QueueEntry(
                 i + 1,
                 patient.patient_id,
+                record.intake_id,
                 patient.name,
                 age_in_years(patient.date_of_birth),
+                patient.sex,
                 esi_level,
+                flag_tier,
                 priority_label,
                 severity_score,
                 "WAITING",

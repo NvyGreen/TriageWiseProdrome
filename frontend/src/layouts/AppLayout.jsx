@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, Link, NavLink } from 'react-router-dom';
 import { Activity, User, List, ChartColumn, LogOut, Clock } from 'lucide-react';
 
 import './AppLayout.css';
 
+
+// NavLink hands its className a render prop, so the active class is derived
+// from the current route rather than hardcoded.
+const navClass = ({ isActive }) => (isActive ? 'active' : undefined);
 
 const clockFormat = {
     month: 'short',
@@ -41,17 +45,17 @@ export default function AppLayout() {
 
                 <div className='brandrule' />
 
-                {/* All three point at '/' until the other routes exist. Swap Link
-                    for NavLink then and the active class comes for free. */}
+                {/* Reports has no route yet, so it stays a plain Link and never
+                    takes the active class. */}
                 <nav className='nav'>
-                    <Link to='/' className='active'>
+                    <NavLink to='/' end className={navClass}>
                         <User size={17} />
                         <span>Patient Intake</span>
-                    </Link>
-                    <Link to='/'>
+                    </NavLink>
+                    <NavLink to='/queue' className={navClass}>
                         <List size={17} />
                         <span>Triage Queue</span>
-                    </Link>
+                    </NavLink>
                     <Link to='/'>
                         <ChartColumn size={17} />
                         <span>Reports &amp; Metrics</span>

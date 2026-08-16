@@ -1,0 +1,474 @@
+/* Single-column page, unlike the intake screen's form + rail grid. */
+.queue {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 20px 26px 36px;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.toolbar .search {
+  flex: 1;
+  max-width: 330px;
+}
+
+/* The shared field styles are sized for the intake form, so the search input
+   is tightened back down here. */
+.toolbar .search .field {
+  margin: 0;
+}
+
+.toolbar .search input {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.toolbar .search .field-icon {
+  top: 9px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.updated {
+  font-size: 11.5px;
+  color: var(--slate);
+  white-space: nowrap;
+}
+
+.refresh {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  background: var(--card);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.refresh:hover:not(:disabled) {
+  border-color: var(--slate);
+}
+
+.refresh:disabled {
+  color: var(--slate);
+  cursor: default;
+}
+
+.refresh .spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh .spin {
+    animation: none;
+  }
+}
+
+.showcompleted {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--slate);
+  cursor: pointer;
+  user-select: none;
+}
+
+.showcompleted .box {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 20px;
+  background: #cfd6de;
+  transition: background 0.15s;
+}
+
+.showcompleted .box::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+
+.showcompleted.on .box {
+  background: var(--teal);
+}
+
+.showcompleted.on .box::after {
+  left: 18px;
+}
+
+/* Failed status update */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f4c4c4;
+  border-radius: var(--r6);
+  background: #fdecec;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #a32626;
+}
+
+.banner svg {
+  flex-shrink: 0;
+}
+
+.banner-dismiss {
+  margin-left: auto;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* A dispositioned row can't be reversed, so its control reads as inert */
+.statussel select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Table */
+.tablecard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.tablewrap {
+  overflow-x: auto;
+}
+
+.tablecard table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.tablecard thead th {
+  text-align: left;
+  padding: 13px 16px;
+  background: #fafbfc;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+.tablecard .col-pos {
+  width: 52px;
+}
+
+.tablecard .col-status {
+  width: 160px;
+}
+
+.tablecard tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f3f7;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.tablecard tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pos {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.nm {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ag {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--slate);
+}
+
+.pid {
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+.pts {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.pts small {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+/* ESI bands. 1 is most acute, 5 least. */
+.esi {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.esi.e1 {
+  background: var(--crit);
+  color: #fff;
+}
+
+.esi.e2 {
+  background: #fff;
+  border: 1.4px solid var(--amber);
+  color: #b06d18;
+}
+
+.esi.e3 {
+  background: #fff8ec;
+  border: 1.3px solid #e6c36b;
+  color: #a07c14;
+}
+
+.esi.e4 {
+  background: var(--tealbg);
+  border: 1.3px solid #b9e3cd;
+  color: #2b7a58;
+}
+
+.esi.e5 {
+  background: #eef1f5;
+  border: 1.3px solid #dde2e8;
+  color: #6d7a88;
+}
+
+/* Red-flag tiers */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.flag svg {
+  flex-shrink: 0;
+}
+
+.flag.t1 {
+  background: #fdecec;
+  border: 1px solid #f4c4c4;
+  color: var(--crit);
+}
+
+.flag.t2 {
+  background: #fdf4e6;
+  border: 1px solid #f0d9ac;
+  color: #c77d1a;
+}
+
+/* Also used for absent ESI and severity */
+.flag.none {
+  padding: 0;
+  color: #c0cad6;
+  font-weight: 600;
+}
+
+/* Status control — the shared select is restyled into a compact pill here */
+.statussel .field {
+  margin: 0;
+}
+
+.statussel select {
+  width: auto;
+  min-width: 128px;
+  padding: 4px 26px 4px 11px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  background-position: right 9px center;
+}
+
+.st-waiting select {
+  background-color: #fff3e6;
+  border-color: #f3d9a8;
+  color: #b06d18;
+}
+
+.st-inroom select {
+  background-color: #e9f2fb;
+  border-color: #bcd6ef;
+  color: #2b6cb0;
+}
+
+.st-done select {
+  background-color: #eef1f5;
+  border-color: #dde2e8;
+  color: #7a8794;
+}
+
+/* Row states */
+tr.inroom td {
+  background: #f8fafc;
+}
+
+tr.inroom .nm,
+tr.inroom .pos {
+  color: #7a8794;
+}
+
+tr.done td {
+  background: #f6f7f9;
+  opacity: 0.72;
+}
+
+tr.done .nm,
+tr.done .pos {
+  color: #9aa7b5;
+}
+
+.statebadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.statebadge.inroom {
+  background: #e9f2fb;
+  color: #2b6cb0;
+}
+
+.statebadge.done {
+  background: #eef1f5;
+  color: #8794a2;
+}
+
+.noresults td {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--slate);
+  font-size: 12.5px;
+}
+
+.loaderror {
+  color: var(--crit);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.retry {
+  padding: 7px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  background: var(--card);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.retry:hover {
+  border-color: var(--slate);
+}
+
+tr.sectlabel td {
+  padding: 8px 16px;
+  background: #f1f4f7;
+  border-bottom: 1px solid #e6eaef;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8794a2;
+}
+
+.note {
+  margin-top: 14px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--slate);
+}
+
+@media (max-width: 640px) {
+  .queue {
+    padding: 16px 14px 32px;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .toolbar .search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .showcompleted {
+    margin-left: 0;
+  }
+}

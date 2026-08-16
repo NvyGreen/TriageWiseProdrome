@@ -21,8 +21,17 @@ import { useId } from 'react';
  * @param {(name: string, value: string) => void} props.onChange - change handler
  * @param {RadioOption[]} props.options - the radio options
  * @param {string} [props.error] - validation message; also flags the group invalid
+ * @param {string} [props.ariaLabel] - accessible name when there is no visible label
  */
-export default function RadioGroup({ radioLabel, name, value, onChange, options, error }) {
+export default function RadioGroup({
+    radioLabel,
+    name,
+    value,
+    onChange,
+    options,
+    error,
+    ariaLabel
+}) {
     // Scopes input ids to this instance, so repeated Yes/No groups on the same
     // page don't collide and steal each other's label clicks.
     const uid = useId();
@@ -36,7 +45,14 @@ export default function RadioGroup({ radioLabel, name, value, onChange, options,
         <div className='field'>
             {radioLabel && <label className='lbl'>{radioLabel}</label>}
 
-            <div className='radios' role='radiogroup' aria-describedby={error ? errorId : undefined}>
+            {/* role="radiogroup" needs a name of its own; the surrounding
+                heading is visual only. */}
+            <div
+                className='radios'
+                role='radiogroup'
+                aria-label={radioLabel ? undefined : ariaLabel}
+                aria-describedby={error ? errorId : undefined}
+            >
                 {options.map((currOption) => {
                     const inputId = `${uid}-${currOption.value}`;
 

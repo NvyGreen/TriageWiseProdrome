@@ -98,7 +98,9 @@ def test_entry_includes_patient_details(client, db_session, queue_override):
 
     entry = _entries(client)[0]
     assert entry["patient_id"] == patient_id
+    assert entry["intake_id"] == intake_id
     assert entry["name"] == "Detail Patient"
+    assert entry["sex"] == "M"
     # Computed, never hardcoded — a literal would rot on the patient's birthday.
     assert entry["age"] == age_in_years(dob)
 
@@ -113,6 +115,7 @@ def test_severity_fields_populated_when_severity_row_exists(client, db_session, 
     assert entry["priority_label"] == "High"  # joined from esi_band
     # Numeric(5,1) serializes as a float, not an int.
     assert float(entry["severity_score"]) == 6.0
+    assert entry["flag_tier"] == 3  # server_default when not set on the row
 
 
 def test_clinician_esi_takes_precedence(client, db_session, queue_override):

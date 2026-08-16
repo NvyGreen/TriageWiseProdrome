@@ -6,9 +6,12 @@ from decimal import Decimal
 class QueueEntry:
     position: int
     patient_id: int
+    intake_id: int
     name: str
     age: int
+    sex: str
     esi_level: str | None
+    flag_tier: int | None
     priority_label: str | None
     # Numeric(5,1) on patient_severity -> Decimal, not int
     severity_score: Decimal | None

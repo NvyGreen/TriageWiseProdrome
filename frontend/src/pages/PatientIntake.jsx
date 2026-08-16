@@ -580,6 +580,7 @@ function PatientIntake() {
                             onChange={updateField}
                             error={errors.pregnancy_status}
                             options={pregnancyOptions}
+                            ariaLabel='Pregnancy status'
                         />
 
                         <div className='infoline'>
@@ -619,6 +620,7 @@ function PatientIntake() {
                                 value={formData.arrival_by_ambulance}
                                 onChange={updateField}
                                 options={yesNoOptions}
+                                ariaLabel='Arrival by ambulance'
                             />
                         </div>
 
@@ -629,6 +631,7 @@ function PatientIntake() {
                                 value={formData.recent_ed_visit_72h}
                                 onChange={updateField}
                                 options={yesNoOptions}
+                                ariaLabel='Seen in ED within 72 hours'
                             />
                         </div>
 
@@ -639,6 +642,7 @@ function PatientIntake() {
                                 value={formData.injury_related}
                                 onChange={updateField}
                                 options={yesNoOptions}
+                                ariaLabel='Injury or trauma related'
                             />
                         </div>
                     </div>
@@ -657,6 +661,7 @@ function PatientIntake() {
                         onChange={handleComplaintChange}
                         error={errors.chief_complaint}
                         options={chiefComplaintOptions}
+                        ariaLabel='Primary / chief complaint'
                         placeholder='Select the main reason for the visit'
                     />
 

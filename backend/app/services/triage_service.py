@@ -509,7 +509,13 @@ class TriageService:
         risk_blurb = self._render_risk_blurb(severity, ai_explanation)
 
         try:
-            stmt = select(Override).where(Override.severity_id == severity.severity_id)
+            # applyOverride inserts a new row each time, so pick the most recent
+            # (override_id breaks a same-transaction created_at tie).
+            stmt = (
+                select(Override)
+                .where(Override.severity_id == severity.severity_id)
+                .order_by(Override.created_at.desc(), Override.override_id.desc())
+            )
             override = self.db.scalar(stmt)
             override_info = None
             if override is not None:
@@ -673,7 +679,13 @@ class TriageService:
 
         score_line = f"System suggests: {severity.system_ESI}\nClinician score: {severity.clinician_ESI}"
         try:
-            stmt = select(Override).where(Override.severity_id == severity.severity_id)
+            # applyOverride inserts a new row each time, so pick the most recent
+            # (override_id breaks a same-transaction created_at tie).
+            stmt = (
+                select(Override)
+                .where(Override.severity_id == severity.severity_id)
+                .order_by(Override.created_at.desc(), Override.override_id.desc())
+            )
             override = self.db.scalar(stmt)
             if override is not None:
                 score_line += f"\nOverride reason: {override.reason_code}"

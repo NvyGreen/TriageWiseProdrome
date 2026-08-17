@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Search, TriangleAlert, CircleAlert, RefreshCw } from "lucide-react";
 
 import TextBox from "../components/TextBox";
@@ -109,7 +110,12 @@ function QueueRow({ patient, status, onStatusChange, pending }) {
 
             <td>
                 <div className='nm'>
-                    {patient.name} <span className='ag'>{patient.age} / {patient.sex}</span>
+                    {/* Only the name is the link — the row holds a select, and a
+                        whole-row target would swallow its clicks. */}
+                    <Link className='namelink' to={`/intakes/${patient.intake_id}`}>
+                        {patient.name}
+                    </Link>{' '}
+                    <span className='ag'>{patient.age} / {patient.sex}</span>
                     {modifiers.badge && (
                         <span className={`statebadge ${modifiers.row}`}>
                             {modifiers.badge}

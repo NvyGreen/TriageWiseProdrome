@@ -17,6 +17,7 @@ band_name and age aren't fields on the bundle — derived here from system_ESI
 import json
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,6 +27,7 @@ from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.schemas.trigger_info import TriggerInfo
+from app.schemas.patient_detail_out import PatientDetailOut, OverrideOut, Mode
 from app.services.triage_service import LABEL_MAP, TriageService
 from app.utils.dates import age_in_years
 from app.utils.driver import Driver
@@ -161,3 +163,61 @@ def test_get_patient_detail_composition(case, db_session):
     if expect.get("age_is_derived"):
         assert detail.patient.date_of_birth == date.fromisoformat(case["seed"]["patient"]["date_of_birth"])
         assert age_in_years(detail.patient.date_of_birth) >= 0
+
+
+def test_patient_detail_out_exposes_clinical_data_in_both_modes(db_session):
+    """Output layer: clinical facts (patient_id + nested intake) show in BOTH
+    modes; reasoning fields stay xai-only via exclude_none."""
+    case = next(c for c in SERVICE_CASES if c["_name"] == "svc_full_bundle_composes")
+    intake = _seed(db_session, case["seed"])
+    detail = TriageService(db_session).getPatientDetail(intake.intake_id)
+
+    black = PatientDetailOut.from_detail(detail, Mode.BLACKBOX).model_dump(exclude_none=True)
+    xai = PatientDetailOut.from_detail(detail, Mode.XAI).model_dump(exclude_none=True)
+
+    # Clinical facts present in both modes.
+    for dump in (black, xai):
+        assert dump["patient_id"] == detail.patient.patient_id
+        assert dump["intake"]["intake_id"] == intake.intake_id
+        assert "created_at" in dump["intake"]
+        assert "symptoms" in dump["intake"]
+
+    # Reasoning gated to xai.
+    assert "lede" not in black
+    assert "explanation" not in black
+    assert "lede" in xai
+    assert "explanation" in xai
+
+
+def test_override_out_carries_note():
+    """OverrideOut maps the clinician's note through (previously dropped)."""
+    override = SimpleNamespace(
+        system_esi="ESI-2",
+        clinician_esi="ESI-1",
+        reason_code="clinical_judgment",
+        note="Reassuring exam, stable on arrival.",
+    )
+
+    assert OverrideOut.from_override(override).note == "Reassuring exam, stable on arrival."
+
+
+def test_override_shown_in_both_modes_with_xai_line_gated(db_session):
+    """The structured override (facts) shows in BOTH modes; only its xai_line
+    (driver-naming reasoning) is XAI-only."""
+    case = next(c for c in SERVICE_CASES if c["_name"] == "svc_override_present")
+    intake = _seed(db_session, case["seed"])
+    detail = TriageService(db_session).getPatientDetail(intake.intake_id)
+
+    black = PatientDetailOut.from_detail(detail, Mode.BLACKBOX).model_dump(exclude_none=True)
+    xai = PatientDetailOut.from_detail(detail, Mode.XAI).model_dump(exclude_none=True)
+
+    # Override facts present in both modes.
+    for dump in (black, xai):
+        ov = dump["override"]
+        assert ov["system_esi"] == detail.override.system_esi
+        assert ov["clinician_esi"] == detail.override.clinician_esi
+        assert ov["reason_code"] == detail.override.reason_code
+
+    # xai_line (reasoning) only in XAI.
+    assert "xai_line" not in black["override"]
+    assert xai["override"]["xai_line"] == detail.xai_line

@@ -1,0 +1,1149 @@
+/* Everything is scoped under .detail so these generic names (.panel, .grid,
+   .bar, .tabs) can't leak into the intake or queue screens. */
+.detail {
+  --navy-2: #16335c;
+  --crit-bg: #fdecec;
+  --crit-br: #f4c4c4;
+  --amber-bg: #fff8ed;
+  --amber-br: #f3d9a8;
+  --amber-ink: #b06d18;
+  --ok-bg: #e7f5ee;
+  --ok-br: #b9e3cd;
+  --r14: 14px;
+
+  width: 100%;
+  max-width: 1510px;
+  margin: 0 auto;
+  padding: 20px 28px 44px;
+}
+
+.detail .crumb {
+  font-size: 12.5px;
+  color: var(--slate);
+  margin-bottom: 6px;
+}
+
+.detail .crumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.detail .crumb a:hover {
+  text-decoration: underline;
+}
+
+.detail .crumb b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.detail .h1 {
+  margin: 0 0 12px;
+}
+
+/* Back / edit */
+.detail .actionrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.detail .backbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--slate);
+  text-decoration: none;
+}
+
+.detail .backbtn:hover {
+  border-color: var(--slate);
+  color: var(--ink);
+}
+
+.detail .editbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: 1px solid var(--navy);
+  border-radius: var(--r6);
+  background: var(--navy);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.detail .editbtn:disabled {
+  border-color: #97a5b6;
+  background: #97a5b6;
+  cursor: not-allowed;
+}
+
+/* Patient card */
+.detail .pcard {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 112px;
+  margin-bottom: 14px;
+  padding: 18px 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r14);
+  box-shadow: 0 1px 2px rgba(15, 36, 64, 0.04);
+}
+
+.detail .pic {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.detail .pic.crit {
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+
+.detail .pic.amber {
+  background: #fff3e6;
+  color: var(--amber);
+}
+
+.detail .pic.ok {
+  background: var(--ok-bg);
+  color: var(--green);
+}
+
+.detail .pinfo {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 34px;
+}
+
+.detail .pname {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.detail .lab {
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate);
+}
+
+.detail .val {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.detail .val.blue {
+  color: var(--navy-2);
+}
+
+/* Severity box, tinted by band */
+.detail .sevbox {
+  min-width: 230px;
+  padding: 14px 18px;
+  border-radius: var(--r10);
+}
+
+.detail .sevbox.crit {
+  background: var(--crit-bg);
+  border: 1px solid var(--crit-br);
+}
+
+.detail .sevbox.amber {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-br);
+}
+
+.detail .sevbox.ok {
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-br);
+}
+
+.detail .sevbox .score {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.detail .sevbox .score small {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.detail .sevbox.crit .lab,
+.detail .sevbox.crit .score {
+  color: var(--crit);
+}
+
+.detail .sevbox.amber .lab,
+.detail .sevbox.amber .score {
+  color: var(--amber-ink);
+}
+
+.detail .sevbox.ok .lab,
+.detail .sevbox.ok .score {
+  color: #226e4e;
+}
+
+.detail .sevbox .row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detail .datacomp {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+.detail .datacomp.warn {
+  color: #b3322f;
+}
+
+/* Pills */
+.detail .pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.detail .pill.crit {
+  background: var(--crit);
+  color: #fff;
+}
+
+.detail .pill.critline {
+  background: var(--card);
+  border: 1.4px solid var(--crit);
+  color: var(--crit);
+}
+
+.detail .pill.amber {
+  background: var(--amber);
+  color: #fff;
+}
+
+.detail .pill.amberline {
+  background: var(--card);
+  border: 1.4px solid var(--amber);
+  color: var(--amber-ink);
+}
+
+.detail .pill.ok {
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-br);
+  color: var(--green);
+}
+
+.detail .pill.okline {
+  background: var(--card);
+  border: 1.4px solid var(--green);
+  color: var(--green);
+}
+
+.detail .pill.wait {
+  background: #fff3e6;
+  border: 1px solid #f6d9b0;
+  color: var(--amber);
+}
+
+/* Tabs + status strip */
+.detail .tabsbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  margin-bottom: 14px;
+  padding: 0 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r10);
+  box-shadow: 0 1px 2px rgba(15, 36, 64, 0.04);
+}
+
+.detail .tabs {
+  display: flex;
+  gap: 26px;
+}
+
+.detail .tabs .t {
+  padding: 13px 2px;
+  border-bottom: 2.5px solid transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+.detail .tabs .t.on {
+  color: var(--navy);
+  border-bottom-color: var(--teal);
+}
+
+.detail .tabs .t.future {
+  color: #aab4c0;
+  cursor: default;
+}
+
+.detail .tabs .soon {
+  margin-left: 5px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #eef1f5;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #90a0b2;
+  vertical-align: 1px;
+}
+
+.detail .statusmini {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  padding: 8px 0;
+}
+
+.detail .statusmini .lab {
+  margin: 0 0 2px;
+}
+
+/* Three-column body */
+.detail .grid {
+  display: grid;
+  grid-template-columns: 320px minmax(560px, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.detail .colleft,
+.detail .colright {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.detail .colmid {
+  min-width: 0;
+}
+
+.detail .panel {
+  padding: 17px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r14);
+  box-shadow: 0 1px 2px rgba(15, 36, 64, 0.04);
+}
+
+.detail .panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 13px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+/* Tinted icon badge in panel headings */
+.detail .ic {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+.detail .ic.info {
+  background: #e9f2fb;
+  color: #2b6cb0;
+}
+
+.detail .ic.heart {
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+
+.detail .ic.ai {
+  background: #ede9fb;
+  color: #6b46c1;
+}
+
+/* Named .chart, not .donut — .donut is the 160px SVG below and would win. */
+.detail .ic.chart {
+  background: var(--ok-bg);
+  color: var(--green);
+}
+
+.detail .ic.ovr {
+  background: #eef1f5;
+  color: var(--slate);
+}
+
+/* Clinical summary */
+.detail .sect {
+  margin: 14px 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate);
+}
+
+.detail .panel h3 + .sect {
+  margin-top: 0;
+}
+
+.detail .symptoms {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.detail .vitalsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail .vital {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.detail .vitalName {
+  color: var(--slate);
+}
+
+.detail .vitalValue {
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Red only where a rule actually fired */
+.detail .vitalValue.scored {
+  color: var(--crit);
+}
+
+.detail .vitalValue.miss {
+  font-weight: 500;
+  font-style: italic;
+  color: #b3322f;
+}
+
+/* Risk level */
+.detail .riskLevel .notes {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--slate);
+}
+
+/* ---------- Middle column: explanation ---------- */
+.detail .explanationTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.detail .explanationTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+/* Black-box / XAI switch */
+.detail .togglebar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate);
+  cursor: pointer;
+  user-select: none;
+}
+
+.detail .switch {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  border-radius: 20px;
+  background: #c4ccd6;
+  transition: background 0.2s;
+}
+
+.detail .switch::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+}
+
+.detail .togglebar.on .switch {
+  background: var(--teal);
+}
+
+.detail .togglebar.on .switch::after {
+  left: 19px;
+}
+
+.detail .bbNote {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 1px dashed #c4cdd8;
+  border-radius: var(--r10);
+  background: var(--bg);
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  color: var(--slate);
+}
+
+/* Red-flag banners */
+.detail .flagstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.detail .flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: var(--r10);
+}
+
+.detail .flag .fi {
+  display: flex;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+/* min-width:0 so a long message wraps instead of shoving the tag off the end */
+.detail .flag .ftext {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail .flag.t1 {
+  background: var(--crit-bg);
+  border: 1px solid #f3c2c2;
+  border-left: 4px solid var(--crit);
+}
+
+.detail .flag.t2 {
+  background: #fff5e8;
+  border: 1px solid var(--amber-br);
+  border-left: 4px solid var(--amber);
+}
+
+.detail .flag .fmsg {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.detail .flag.t1 .fi {
+  color: var(--crit);
+}
+
+.detail .flag.t2 .fi {
+  color: var(--amber);
+}
+
+/* Trigger for the per-banner tooltip. Inline-block so the dotted underline
+   hugs the text rather than the full row. */
+.detail .flag .fwhy {
+  position: relative;
+  display: inline-block;
+  margin-top: 1px;
+  border-bottom: 1px dotted currentColor;
+  font-size: 11px;
+  color: var(--slate);
+  cursor: help;
+}
+
+.detail .flag .fwhytip {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 145%;
+  z-index: 20;
+  width: 250px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--navy);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #e6edf5;
+  box-shadow: 0 6px 18px rgba(15, 36, 64, 0.28);
+  white-space: normal;
+  cursor: auto;
+}
+
+.detail .flag .fwhy:hover .fwhytip,
+.detail .flag .fwhy:focus .fwhytip,
+.detail .flag .fwhy:focus-visible .fwhytip {
+  display: block;
+}
+
+.detail .flag .fwhycaveat {
+  display: block;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  color: #9fb8d4;
+}
+
+.detail .flag .ftag {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.detail .flag.t1 .ftag {
+  background: #f7d4d4;
+  color: #a32323;
+}
+
+.detail .flag.t2 .ftag {
+  background: #f6e3c2;
+  color: #8a5412;
+}
+
+.detail .flagnote {
+  font-size: 10.5px;
+  font-style: italic;
+  color: var(--slate);
+}
+
+.detail .explanationText {
+  margin: 8px 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* Tinted by value — LOW confidence must not read as reassuring. */
+.detail .confidenceLine {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.detail .conf-high {
+  border: 1px solid var(--ok-br);
+  background: var(--ok-bg);
+  color: var(--green);
+}
+
+.detail .conf-medium {
+  border: 1px solid var(--amber-br);
+  background: var(--amber-bg);
+  color: var(--amber-ink);
+}
+
+.detail .conf-low {
+  border: 1px solid var(--crit-br);
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+
+/* Factor table */
+.detail .breakdownTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.detail .breakdownTable th {
+  padding: 0 8px 9px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+.detail .breakdownTable td {
+  padding: 12px 8px 12px 0;
+  border-bottom: 1px solid #f0f3f7;
+  font-size: 12.5px;
+  vertical-align: middle;
+}
+
+.detail .breakdownTable tr:last-child td {
+  border-bottom: none;
+}
+
+.detail .fname {
+  position: relative;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: help;
+}
+
+.detail .bar {
+  position: relative;
+  height: 7px;
+  min-width: 78px;
+  border-radius: 4px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+
+.detail .bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+}
+
+.detail .imp {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.detail .muted {
+  color: var(--slate);
+}
+
+.detail .skiprow td {
+  background: #fcfdfe;
+  opacity: 0.72;
+}
+
+.detail .skip {
+  margin-left: 5px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #eef1f5;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #90a0b2;
+}
+
+.detail .miss2 {
+  font-style: italic;
+  color: #b3322f;
+}
+
+/* Rule detail, on hover and on keyboard focus */
+.detail .ftip {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 110%;
+  z-index: 20;
+  width: 230px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--navy);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #e6edf5;
+  box-shadow: 0 6px 18px rgba(15, 36, 64, 0.28);
+  white-space: normal;
+}
+
+.detail .fname:hover .ftip,
+.detail .fname:focus .ftip,
+.detail .fname:focus-visible .ftip {
+  display: block;
+}
+
+/* Gap acknowledgement */
+.detail .gapbox {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--amber-br);
+  border-left: 4px solid var(--amber);
+  border-radius: var(--r10);
+  background: var(--amber-bg);
+}
+
+.detail .gaptitle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #9a5a12;
+}
+
+.detail .gapic {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: #fbe6c2;
+  color: var(--amber);
+}
+
+.detail .gaprow {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.detail .gtag {
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.detail .gtag-not_provided {
+  background: #fde2e2;
+  color: #b3322f;
+}
+
+.detail .gtag-assumed,
+.detail .gtag-recorded_not_scored {
+  background: #fbe6c2;
+  color: #9a5a12;
+}
+
+.detail .gtag-red_flag_input {
+  background: #dbeafe;
+  color: #1e4e8c;
+}
+
+.detail .gtag-beyond_the_data {
+  background: #e6e1f7;
+  color: #5a47a0;
+}
+
+.detail .gtxt {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b5836;
+}
+
+.detail .gapcta {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #f1ddb4;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: #8a4f10;
+}
+
+/* Illustrative base rate */
+.detail .braterow {
+  margin-top: 14px;
+  padding: 12px 15px;
+  border: 1px solid var(--amber-br);
+  border-left: 4px solid var(--amber);
+  border-radius: var(--r10);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #6b5836;
+}
+
+/* ---------- Right column ---------- */
+.detail .donutwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.detail .donut {
+  width: 160px;
+  height: 160px;
+}
+
+.detail .donutcap {
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--slate);
+}
+
+.detail .legend .li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12.5px;
+}
+
+.detail .legend .dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.detail .legend .lname {
+  flex: 1;
+  color: var(--ink);
+}
+
+.detail .legend .lval {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.detail .legend .lpct {
+  margin-left: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--slate);
+}
+
+.detail .totrow {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.detail .totrow b {
+  color: var(--navy);
+}
+
+/* System vs clinician */
+.detail .dualbox {
+  padding: 14px 16px;
+  border: 1px solid #cfe3e8;
+  border-left: 4px solid var(--teal);
+  border-radius: var(--r10);
+  background: #f0f7f9;
+}
+
+.detail .dualbox h4 {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.detail .dualrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+  margin-bottom: 10px;
+}
+
+.detail .dualrow .lab {
+  margin-bottom: 2px;
+  font-size: 10px;
+}
+
+.detail .dualrow .sys {
+  opacity: 0.72;
+}
+
+.detail .dualrow .sys .num {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.detail .dualrow .you .num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--teal);
+}
+
+.detail .overrideReason {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.detail .overrideReason .k,
+.detail .overrideReason .onote {
+  color: var(--slate);
+}
+
+.detail .overrideError {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--crit-br);
+  border-radius: var(--r6);
+  background: var(--crit-bg);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #a32626;
+}
+
+.detail .dualprompt {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #e3f0f0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #0f5c5c;
+}
+
+/* Override form */
+.detail .overrideForm .q {
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: var(--slate);
+}
+
+.detail .overrideForm .field + .field {
+  margin-top: 9px;
+}
+
+.detail .overrideSubmit {
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px;
+  border: none;
+  border-radius: var(--r6);
+  background: var(--navy);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.detail .overrideSubmit:disabled {
+  background: #97a5b6;
+  cursor: not-allowed;
+}
+
+.detail .disclaim {
+  margin-top: 9px;
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+  color: var(--slate);
+}
+
+/* Loading / not-found / failed-load states */
+.detail .emptystate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 18px;
+  text-align: center;
+  color: var(--slate);
+  font-size: 13px;
+}
+
+.detail .loaderror {
+  color: var(--crit);
+  font-weight: 600;
+}
+
+.detail button.backbtn {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 1280px) {
+  .detail .grid {
+    grid-template-columns: 300px minmax(460px, 1fr) 280px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .detail .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .detail {
+    padding: 16px 14px 32px;
+  }
+
+  .detail .pcard {
+    flex-wrap: wrap;
+  }
+
+  .detail .sevbox {
+    flex: 1;
+  }
+}

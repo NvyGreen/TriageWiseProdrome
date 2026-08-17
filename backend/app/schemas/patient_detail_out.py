@@ -12,10 +12,10 @@ Design:
 
 Mode gating lives in one place: PatientDetailOut.from_detail.
 
-Dual-score (R2): the two ESI numbers ("System suggests X / Clinician score Y")
-carry no driver info, so `dual_score_line` is shown in BOTH modes. The
-`xai_line` NAMES the delta drivers ("System weighted chest pain + SpO2 ..."),
-which is reasoning — so it is XAI-only.
+Dual-score (R2): the override is a single structured object shown in BOTH modes.
+Its facts (system_esi, clinician_esi, reason_code, note) carry no reasoning. Only
+OverrideOut.xai_line — which NAMES the delta drivers ("System weighted chest pain
++ SpO2 ...") — is reasoning, so it alone is XAI-only.
 """
 
 from enum import Enum
@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from ..utils.dates import age_in_years
 from ..utils.constants import LABEL_MAP
+from .intake_info import IntakeInfo
 
 
 class Mode(str, Enum):
@@ -93,16 +94,23 @@ class RedFlagOut(BaseModel):
 
 
 class OverrideOut(BaseModel):
+    # Facts the clinician decided — shown in BOTH modes.
     system_esi: str
     clinician_esi: str
     reason_code: str
+    note: str | None
+    # NAMES the delta drivers -> reasoning -> XAI only (None in black-box, dropped
+    # by exclude_none). Passed in only on the XAI path.
+    xai_line: str | None = None
 
     @classmethod
-    def from_override(cls, o) -> "OverrideOut":
+    def from_override(cls, o, xai_line=None) -> "OverrideOut":
         return cls(
             system_esi=o.system_esi,
             clinician_esi=o.clinician_esi,
             reason_code=o.reason_code,
+            note=o.note,
+            xai_line=xai_line,
         )
 
 
@@ -111,6 +119,9 @@ class OverrideOut(BaseModel):
 # --------------------------------------------------------------------------
 class PatientDetailOut(BaseModel):
     # --- always shown (black-box AND xai) ---
+    patient_id: int
+    # POST /overrides needs this; it's an identifier, not reasoning, so both modes.
+    severity_id: int
     patient_name: str
     age: int
     sex: str
@@ -118,7 +129,12 @@ class PatientDetailOut(BaseModel):
     system_esi: str
     band_name: str
     data_completeness: str
-    dual_score_line: str | None = None
+    # Clinician's own inputs (vitals, symptoms, conditions, created_at) — clinical
+    # facts, not reasoning, so shown in both modes.
+    intake: IntakeInfo
+    # Structured override — shown in BOTH modes; its own xai_line field is the only
+    # part gated to XAI (see OverrideOut).
+    override: OverrideOut | None = None
 
     # --- xai-only (omitted in black-box via exclude_none) ---
     lede: str | None = None
@@ -126,15 +142,22 @@ class PatientDetailOut(BaseModel):
     confidence: str | None = None
     explanation: ExplanationOut | None = None
     red_flags: list[RedFlagOut] | None = None
-    override: OverrideOut | None = None
-    # xai_line NAMES delta drivers -> reasoning -> XAI only.
-    dual_score_detail: str | None = None
     # illustrative base rate -> reasoning -> XAI only.
     base_rate_line: str | None = None
 
     @classmethod
     def from_detail(cls, detail, mode: str | Mode) -> "PatientDetailOut":
+        # The override object is shown in both modes; its xai_line (the reasoning
+        # part) is attached only on the XAI path below.
+        override_out = (
+            OverrideOut.from_override(detail.override)
+            if detail.override is not None
+            else None
+        )
+
         base = dict(
+            patient_id=detail.patient.patient_id,
+            severity_id=detail.severity.severity_id,
             patient_name=detail.patient.name,
             age=age_in_years(detail.patient.date_of_birth),
             sex=detail.patient.sex,
@@ -142,15 +165,19 @@ class PatientDetailOut(BaseModel):
             system_esi=detail.severity.system_ESI,
             band_name=LABEL_MAP[detail.severity.system_ESI],
             data_completeness=detail.explanation.data_completeness,
-            dual_score_line=detail.dual_score_line,
+            intake=detail.intake,
+            override=override_out,
         )
 
-        # Black-box: score + level (+ dual-score numbers) only. Reasoning fields
-        # stay None and are dropped by exclude_none — never leave the server.
+        # Black-box: score + level, clinical facts, and the override facts. Reasoning
+        # fields stay None and are dropped by exclude_none — never leave the server.
         if mode == Mode.BLACKBOX:
             return cls(**base)
 
-        # XAI: attach the full reasoning, including the driver-naming dual line.
+        # XAI: the override's driver-naming line is reasoning, so add it here.
+        if override_out is not None:
+            override_out.xai_line = detail.xai_line
+
         return cls(
             **base,
             lede=detail.lede,
@@ -158,11 +185,5 @@ class PatientDetailOut(BaseModel):
             confidence=detail.severity.confidence,
             explanation=ExplanationOut.from_explanation(detail.explanation),
             red_flags=[RedFlagOut.from_trigger(t) for t in detail.red_flags],
-            override=(
-                OverrideOut.from_override(detail.override)
-                if detail.override is not None
-                else None
-            ),
-            dual_score_detail=detail.xai_line,
             base_rate_line=detail.base_rate_line
         )

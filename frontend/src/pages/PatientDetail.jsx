@@ -549,10 +549,9 @@ function PatientDetail() {
                 <Link className='backbtn' to='/queue'>
                     ← Back to Queue
                 </Link>
-                {/* The edit screen does not exist yet. */}
-                <button className='editbtn' type='button' disabled>
+                <Link className='editbtn' to={`/intakes/${intakeId}/edit`}>
                     Edit Patient
-                </button>
+                </Link>
             </div>
 
             <div className='pcard'>

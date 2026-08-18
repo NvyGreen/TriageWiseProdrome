@@ -332,6 +332,10 @@ class TriageService:
                     }
 
             if updated_vitals:
+                # The vitals changed, so the completeness list is stale — re-derive
+                # it from the updated intake before re-scoring (mirrors submitIntake).
+                intake.missing_fields = [field for field in VITAL_FIELDS if getattr(intake, field) is None]
+
                 # Re-score and re-queue based on these values
                 old_esi = severity.clinician_ESI if severity.clinician_ESI is not None else severity.system_ESI
                 old_flag_tier = severity.flag_tier
@@ -421,7 +425,13 @@ class TriageService:
                 logger.error("Severity was none when it shouldn't be")
                 raise HTTPException(status_code=500)
 
-            stmt = select(AIExplanation).where(AIExplanation.intake_id == intake_id)
+            # build() upserts, so there should be one row — order_by guards against
+            # any legacy duplicates by always reading the most recent.
+            stmt = (
+                select(AIExplanation)
+                .where(AIExplanation.intake_id == intake_id)
+                .order_by(AIExplanation.created_at.desc(), AIExplanation.explanation_id.desc())
+            )
             ai_explanation = self.db.scalar(stmt)
             if ai_explanation is None:
                 logger.error("Explanation was none when it shouldn't be")

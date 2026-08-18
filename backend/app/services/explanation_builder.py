@@ -79,17 +79,33 @@ class ExplanationBuilder:
                 logger.error("severity wasn't in database when it should be")
                 raise HTTPException(status_code=500)
 
-            explanation = AIExplanation(
-                severity_id=severity.severity_id,
-                intake_id=intake.intake_id,
-                explanation_text=explanation_text,
-                factor_breakdown=[asdict(d) for d in severityResult.named_drivers],
-                data_completeness=severityResult.data_completeness,
-                gaps=gaps
-                # TODO: Add step
-                # TODO: Add lead element
+            factor_breakdown = [asdict(d) for d in severityResult.named_drivers]
+
+            # Upsert: updatePatient re-builds on every re-score, so refresh the
+            # existing row rather than inserting a duplicate (which would leave a
+            # stale one to be read back).
+            existing = self.db.scalar(
+                select(AIExplanation).where(AIExplanation.intake_id == intake.intake_id)
             )
-            self.db.add(explanation)
+            if existing is None:
+                explanation = AIExplanation(
+                    severity_id=severity.severity_id,
+                    intake_id=intake.intake_id,
+                    explanation_text=explanation_text,
+                    factor_breakdown=factor_breakdown,
+                    data_completeness=severityResult.data_completeness,
+                    gaps=gaps
+                    # TODO: Add step
+                    # TODO: Add lead element
+                )
+                self.db.add(explanation)
+            else:
+                existing.severity_id = severity.severity_id
+                existing.explanation_text = explanation_text
+                existing.factor_breakdown = factor_breakdown
+                existing.data_completeness = severityResult.data_completeness
+                existing.gaps = gaps
+
             self.db.flush()
         except SQLAlchemyError as e:
             self.db.rollback()

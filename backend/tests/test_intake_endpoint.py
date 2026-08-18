@@ -38,6 +38,7 @@ from app.models.scoring_rule import ScoringRule
 from app.services.priority_queue import PriorityQueue
 from app.services.scoring_engine import ScoringEngine
 from app.services.red_flag_layer import RedFlagLayer
+from app.services.explanation_builder import ExplanationBuilder
 from app.services.triage_service import EventType
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
@@ -222,6 +223,60 @@ def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
     # esi_band_unchanged_by_flag: the band is the score's (13 pts -> ESI-1); the
     # Tier-1 flag did NOT drag it there.
     assert latest.system_ESI == "ESI-1"
+
+
+def test_clinical_update_refreshes_completeness(client, db_session, queue_override):
+    """Providing missing vitals must refresh BOTH completeness signals: the
+    intake's missing_fields column and the explanation's data_completeness.
+    Regression for updatePatient re-scoring but leaving that metadata stale.
+    """
+    # Baseline: cardiac with 3 of 5 scored vitals; SpO2 and resp rate absent.
+    patient = Patient(name="Completeness Refresh", date_of_birth=date(1980, 1, 1), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    intake = IntakeRecord(
+        patient_id=patient.patient_id, chief_complaint="cardiac",
+        heart_rate=130, blood_pressure_systolic=85, pain_level=9,
+        # As submitIntake would compute it — the VITAL_FIELDS that are None.
+        missing_fields=[
+            "blood_pressure_diastolic", "temperature",
+            "oxygen_saturation", "respiration_rate", "blood_sugar",
+        ],
+    )
+    db_session.add(intake)
+    db_session.commit()
+
+    baseline = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    ExplanationBuilder(db_session).build(baseline, intake)
+    db_session.commit()
+    assert baseline.data_completeness == "3 of 5"
+
+    # Clinical update re-queues, so the intake must already be in the queue.
+    queue_override.insert(
+        int(baseline.esi_level[-1]), baseline.flag_tier, _at("10:00"), intake.intake_id
+    )
+
+    resp = client.patch(
+        f"/intakes/{intake.intake_id}",
+        json={"oxygen_saturation": 97, "respiration_rate": 18},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+
+    # missing_fields no longer lists the two now-provided vitals.
+    refreshed = db_session.get(IntakeRecord, intake.intake_id)
+    assert "oxygen_saturation" not in refreshed.missing_fields
+    assert "respiration_rate" not in refreshed.missing_fields
+
+    # Exactly one explanation (upsert, not a duplicate), and it now reads 5 of 5.
+    explanations = (
+        db_session.query(AIExplanation)
+        .filter(AIExplanation.intake_id == intake.intake_id)
+        .all()
+    )
+    assert len(explanations) == 1
+    assert explanations[0].data_completeness == "5 of 5"
 
 
 def test_unscoreable_update_returns_422(client, db_session, queue_override, api_examples):

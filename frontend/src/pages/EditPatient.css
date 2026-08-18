@@ -1,0 +1,552 @@
+/* Scoped under .edit so the generic names here can't reach the other screens. */
+.edit {
+  --navy-2: #16335c;
+  --crit-bg: #fdecec;
+  --crit-br: #f4c4c4;
+  --amber-bg: #fff8ed;
+  --amber-br: #f3d9a8;
+  --amber-ink: #b06d18;
+  --ok-bg: #e7f5ee;
+  --ok-br: #b9e3cd;
+  --r14: 14px;
+
+  width: 100%;
+  max-width: 1510px;
+  margin: 0 auto;
+  padding: 20px 28px 44px;
+}
+
+.edit .crumb {
+  font-size: 12.5px;
+  color: var(--slate);
+  margin-bottom: 6px;
+}
+
+.edit .crumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.edit .crumb a:hover {
+  text-decoration: underline;
+}
+
+.edit .crumb b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.edit .h1 {
+  margin: 0 0 12px;
+}
+
+.edit .actionRow {
+  margin-bottom: 16px;
+}
+
+.edit .backbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--slate);
+  text-decoration: none;
+}
+
+.edit .backbtn:hover {
+  border-color: var(--slate);
+  color: var(--ink);
+}
+
+/* Read-only identity card */
+.edit .pcard {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 112px;
+  margin-bottom: 14px;
+  padding: 18px 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r14);
+  box-shadow: 0 1px 2px rgba(15, 36, 64, 0.04);
+}
+
+.edit .pic {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fff3e6;
+  color: var(--amber);
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.edit .pinfo {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 34px;
+}
+
+.edit .pname {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.edit .lab {
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate);
+}
+
+.edit .val {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.edit .val.blue {
+  color: var(--navy-2);
+}
+
+.edit .lockchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: #eef1f5;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #90a0b2;
+}
+
+/* Two-column body */
+.edit .grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.edit .panel {
+  padding: 17px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r14);
+  box-shadow: 0 1px 2px rgba(15, 36, 64, 0.04);
+}
+
+.edit .panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.edit .ic {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+/* Named .pen, not .edit — .edit is the page wrapper and would apply its
+   full-width padding and centring to this badge. */
+.edit .ic.pen {
+  background: var(--ok-bg);
+  color: var(--green);
+}
+
+.edit .ic.calc {
+  background: #ede9fb;
+  color: #6b46c1;
+}
+
+.edit .panelsub {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--slate);
+}
+
+.edit .sect {
+  margin: 18px 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate);
+}
+
+.edit .panelsub + .sect {
+  margin-top: 2px;
+}
+
+.edit .sectnote {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #9aa7b5;
+}
+
+/* Editable fields */
+.edit .fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.edit .field {
+  display: flex;
+  flex-direction: column;
+}
+
+.edit .field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+.edit .field .unit {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #9aa7b5;
+}
+
+.edit .field input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  background: var(--card);
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.edit .field input:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(31, 138, 138, 0.12);
+}
+
+/* An edited field stays visibly distinct until saved */
+.edit .field input.changed {
+  border-color: var(--amber);
+  background: #fffdf8;
+}
+
+.edit .field .wasval {
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--amber-ink);
+}
+
+.edit .field .miss {
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-style: italic;
+  color: #b3322f;
+}
+
+.edit .field input.invalid {
+  border-color: var(--crit);
+  background: #fdf5f5;
+}
+
+.edit .field .err {
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--crit);
+}
+
+.edit .saveerror {
+  margin-top: 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--crit-br);
+  border-radius: var(--r6);
+  background: var(--crit-bg);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #a32626;
+}
+
+/* Loading / not-found states */
+.edit .emptystate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+.edit .loaderror {
+  font-weight: 600;
+  color: var(--crit);
+}
+
+.edit .rangefield {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit .rangefield input[type='range'] {
+  flex: 1;
+  accent-color: var(--teal);
+}
+
+.edit .rangeval {
+  min-width: 86px;
+  text-align: right;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+/* Unset pain reads as "not recorded", not as a recorded zero */
+.edit .rangeval.unset {
+  font-size: 12px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--slate);
+}
+
+.edit .rangefield input[type='range'].unset {
+  opacity: 0.5;
+}
+
+.edit .rangefield + .wasval,
+.edit .rangefield + .miss {
+  display: block;
+  margin-top: 6px;
+}
+
+/* Save bar */
+.edit .actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.edit .changed-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+}
+
+.edit .changed-note svg {
+  flex-shrink: 0;
+}
+
+.edit .nochange {
+  font-weight: 500;
+  color: var(--slate);
+}
+
+.edit .btns {
+  display: flex;
+  gap: 10px;
+}
+
+.edit .btn {
+  padding: 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.edit .btn.ghost {
+  background: var(--card);
+  color: var(--slate);
+}
+
+.edit .btn.ghost:hover {
+  border-color: var(--slate);
+  color: var(--ink);
+}
+
+.edit .btn.save {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+
+.edit .btn.save:hover:not(:disabled) {
+  background: var(--navy-2);
+  border-color: var(--navy-2);
+}
+
+.edit .btn.save:disabled {
+  background: #97a5b6;
+  border-color: #97a5b6;
+  cursor: not-allowed;
+}
+
+/* Recompute preview */
+.edit .beforeafter {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.edit .ba-col {
+  flex: 1;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r10);
+  text-align: center;
+}
+
+.edit .ba-col .lab {
+  margin-bottom: 8px;
+}
+
+.edit .ba-col .esi {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--slate);
+}
+
+.edit .ba-col .pts {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--slate);
+}
+
+.edit .ba-col.before {
+  background: #f7f9fb;
+}
+
+/* Green only for a genuine de-escalation; any move toward ESI-1 is red. */
+.edit .ba-col.after.better {
+  background: var(--ok-bg);
+  border-color: var(--ok-br);
+}
+
+.edit .ba-col.after.better .esi {
+  color: var(--green);
+}
+
+.edit .ba-col.after.worse {
+  background: var(--crit-bg);
+  border-color: var(--crit-br);
+}
+
+.edit .ba-col.after.worse .esi {
+  color: var(--crit);
+}
+
+/* Band unchanged — neutral, matching the Now column. */
+.edit .ba-col.after.same {
+  background: #f7f9fb;
+}
+
+.edit .ba-col.after.same .esi {
+  color: var(--slate);
+}
+
+.edit .ba-col.after.pending {
+  background: #f7f9fb;
+  border-style: dashed;
+}
+
+.edit .ba-col.after.pending .esi {
+  color: #b0bcc9;
+}
+
+.edit .ba-arrow {
+  display: flex;
+  align-items: center;
+  color: #b0bcc9;
+}
+
+.edit .preview-note {
+  margin-top: 12px;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--slate);
+}
+
+.edit .disclaim {
+  margin-top: 14px;
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+  color: var(--slate);
+}
+
+@media (max-width: 1080px) {
+  .edit .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .edit .fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .edit {
+    padding: 16px 14px 32px;
+  }
+
+  .edit .pcard {
+    flex-wrap: wrap;
+  }
+
+  .edit .actionbar {
+    flex-wrap: wrap;
+  }
+}

@@ -83,10 +83,13 @@
   cursor: pointer;
 }
 
-.detail .editbtn:disabled {
-  border-color: #97a5b6;
-  background: #97a5b6;
-  cursor: not-allowed;
+.detail .editbtn {
+  text-decoration: none;
+}
+
+.detail .editbtn:hover {
+  background: var(--navy-2);
+  border-color: var(--navy-2);
 }
 
 /* Patient card */

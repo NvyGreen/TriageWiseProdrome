@@ -45,6 +45,7 @@ backend/.coverage
 *.sw?
 .venv
 __pycache__/
+.coverage
 
 # VS Code settings
 .vscode/*

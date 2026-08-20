@@ -1,4 +1,4 @@
-# TriageWiseProdrome
+# TriageWiseProdrome · [![backend-tests](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/backend-tests.yml)
 
 A rule-based clinical triage and prioritization engine. It takes an emergency-department intake, assigns an ESI-style acuity level from transparent weighted rules, raises non-obvious red flags, and orders patients in a priority queue — while keeping every decision explainable and leaving final judgment with the clinician.
 

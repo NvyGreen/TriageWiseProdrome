@@ -50,3 +50,37 @@ def test_render_lede(case, db_session):
     assert lede == case["expect"]["expected_lede"]
     # Deterministic: same inputs -> identical text.
     assert service._render_lede(severity, explanation) == lede
+
+
+# Coverage-clause branches the JSON cases don't hit: one gap group empty while the
+# other is populated (all JSON non-5/5 cases have BOTH groups non-empty).
+_LEDE_DRIVERS = [
+    {"rule_id": 9, "factor": "Chief complaint", "threshold": "chest pain (cardiac concern)",
+     "unit": "", "weight": 6, "patient_value": "cardiac", "contribution_pct": 60, "esi_anchor": "a"},
+    {"rule_id": 3, "factor": "Heart rate", "threshold": "> 120 bpm",
+     "unit": "bpm", "weight": 3, "patient_value": 124, "contribution_pct": 40, "esi_anchor": "b"},
+]
+
+
+def test_lede_coverage_only_missing_no_assumed(db_session):
+    severity = PatientSeverity(severity_score=5, system_ESI="ESI-3")
+    explanation = AIExplanation(
+        factor_breakdown=_LEDE_DRIVERS,
+        data_completeness="4 of 5",
+        gaps={"assumed": [], "not_provided": ["respiration_rate"]},
+    )
+    lede = TriageService(db_session)._render_lede(severity, explanation)
+    assert "Respiratory rate missing" in lede
+    assert "assumed" not in lede
+
+
+def test_lede_coverage_only_assumed_no_missing(db_session):
+    severity = PatientSeverity(severity_score=6, system_ESI="ESI-2")
+    explanation = AIExplanation(
+        factor_breakdown=_LEDE_DRIVERS,
+        data_completeness="4 of 5",
+        gaps={"assumed": ["oxygen_saturation"], "not_provided": []},
+    )
+    lede = TriageService(db_session)._render_lede(severity, explanation)
+    assert "SpO2 assumed" in lede
+    assert "missing" not in lede

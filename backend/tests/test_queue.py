@@ -82,3 +82,60 @@ def test_queue_full_sequence(queue_cls):
     for step in SEQUENCE_CASE["sequence"]:
         _insert(queue, step["arrives"])
         assert queue.orderedIntakeIds() == step["expected_order"]
+
+
+# --- PriorityQueue-specific error / branch coverage ---
+
+def _dt(minute=0):
+    return datetime(2020, 1, 1, 10, minute, tzinfo=timezone.utc)
+
+
+def test_insert_rejects_invalid_esi_band():
+    queue = PriorityQueue()
+    with pytest.raises(ValueError):
+        queue.insert(0, 3, _dt(), 1)
+    with pytest.raises(ValueError):
+        queue.insert(6, 3, _dt(), 1)
+
+
+def test_insert_rejects_invalid_flag_tier():
+    queue = PriorityQueue()
+    with pytest.raises(ValueError):
+        queue.insert(3, 0, _dt(), 1)
+    with pytest.raises(ValueError):
+        queue.insert(3, 4, _dt(), 1)
+
+
+def test_remove_last_element():
+    queue = PriorityQueue()
+    queue.insert(1, 3, _dt(0), 100)   # more acute -> heap root
+    queue.insert(2, 3, _dt(1), 200)   # less acute -> last index
+    assert queue.remove(200) == 200
+    assert queue.orderedIntakeIds() == [100]
+
+
+def test_pop_highest_returns_most_acute():
+    queue = PriorityQueue()
+    queue.insert(2, 3, _dt(1), 200)
+    queue.insert(1, 3, _dt(0), 100)
+    assert queue.popHighest() == 100
+    assert queue.orderedIntakeIds() == [200]
+
+
+def test_pop_highest_on_empty_raises():
+    with pytest.raises(IndexError):
+        PriorityQueue().popHighest()
+
+
+def test_remove_unknown_intake_raises():
+    queue = PriorityQueue()
+    queue.insert(1, 3, _dt(), 100)
+    with pytest.raises(ValueError):
+        queue.remove(999)
+
+
+def test_position_unknown_intake_raises():
+    queue = PriorityQueue()
+    queue.insert(1, 3, _dt(), 100)
+    with pytest.raises(ValueError):
+        queue.getIntakePosition(999)

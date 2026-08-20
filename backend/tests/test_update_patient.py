@@ -14,8 +14,10 @@ anything re-scored (req 1.4), `actual_outcome` (nothing writes it), and the
 unscoreable case (needs exclude_unset so an explicit null can clear a vital).
 """
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 import pytest
+from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from app.models.case_update import CaseUpdate
@@ -189,3 +191,45 @@ def test_unknown_intake_status_path_raises_404(db_session, queue):
             999_999_999, IntakeUpdate(status=Status.IN_ROOM), queue
         )
     assert e.value.intake_id == 999_999_999
+
+
+def test_diastolic_not_below_systolic_is_rejected():
+    """Diastolic >= systolic fails validation before the service is reached."""
+    with pytest.raises(ValidationError) as e:
+        IntakeUpdate(blood_pressure_systolic=120, blood_pressure_diastolic=120)
+    assert "Diastolic must be lower than systolic" in str(e.value)
+
+
+def test_status_and_vitals_together_is_rejected():
+    """IntakeUpdate accepts a status or vitals, never both."""
+    with pytest.raises(ValidationError) as e:
+        IntakeUpdate(status=Status.IN_ROOM, heart_rate=80)
+    assert "either status or vitals" in str(e.value)
+
+
+def test_merged_diastolic_ge_systolic_raises(db_session, queue):
+    """Update sends only diastolic; merged against the stored systolic it's too
+    high, so the service (not IntakeUpdate) rejects it with RequestValidationError."""
+    _, intake_id = _seed(db_session, "Dia Merge", blood_pressure_systolic=120)
+    queue.insert(3, 3, _at("10:00"), intake_id)
+
+    with pytest.raises(RequestValidationError):
+        TriageService(db_session).updatePatient(
+            intake_id, IntakeUpdate(blood_pressure_diastolic=200), queue
+        )
+
+
+def test_decimal_vital_old_value_is_floated(db_session, queue):
+    """A stored Decimal vital (temperature) is floated before diffing, so the
+    change is detected and recorded."""
+    _, intake_id = _seed(db_session, "Temp Update", temperature=Decimal("98.6"))
+    queue.insert(3, 3, _at("10:00"), intake_id)
+
+    TriageService(db_session).updatePatient(
+        intake_id, IntakeUpdate(temperature=99.5), queue
+    )
+    db_session.commit()
+
+    rows = _case_updates(db_session, intake_id)
+    assert len(rows) == 1
+    assert rows[0].updated_vitals == {"temperature": 99.5}

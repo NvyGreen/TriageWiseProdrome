@@ -31,6 +31,7 @@ backend/__pycache__/
 backend/*.pyc
 backend/.env
 backend/raw_data/*.dta
+backend/.coverage
 
 # =========================================================================
 # GENERAL / SYSTEM / EDITORS
@@ -44,6 +45,7 @@ backend/raw_data/*.dta
 *.sw?
 .venv
 __pycache__/
+.coverage
 
 # VS Code settings
 .vscode/*

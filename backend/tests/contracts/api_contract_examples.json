@@ -173,7 +173,7 @@
       "_not_client_triggerable": "Every valid ChiefComplaint maps to a complaint rule with weight >= 1, so a well-formed POST always scores at least 1. This path is only reachable when the matching complaint rule is inactive or absent from scoring_rule. Test setup must deactivate the rule for this complaint (is_active = false) before sending the request; the body below is otherwise valid and would return 201 with the rule on.",
       "setup": {
         "deactivate_rules": [
-          13
+          15
         ]
       },
       "request": {
@@ -438,7 +438,7 @@
       "_not_client_triggerable": "IntakeUpdate only accepts the 8 vital/pain fields plus status - chief_complaint is not updatable. Clearing every scoreable vital still leaves the complaint rule firing (>= 1 point), and a body with no vitals at all is rejected as 400. So no valid PATCH body can reach this path. It is only reachable when the intake's complaint rule is inactive or absent from scoring_rule. Test setup must deactivate that rule; with the rule on, the body below returns 200.",
       "setup": {
         "deactivate_rules": [
-          13
+          15
         ],
         "seeded_intake_complaint": "general"
       },

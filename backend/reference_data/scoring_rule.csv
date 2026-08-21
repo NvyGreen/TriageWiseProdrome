@@ -3,18 +3,20 @@ rule_id,rule_type,factor,min_bound,max_bound,units,threshold_display,weight,comp
 2,vital,SpO2,92,94,%,92-94% (borderline),2,,,Borderline low,"assume normal, confidence LOW, flag re-measure",assume_normal,low
 3,vital,Heart rate,121,,bpm,> 120 bpm,3,,,Marked tachycardia,"skip rule, confidence LOW",skip_rule,low
 4,vital,Heart rate,100,120,bpm,100-120 bpm,1,,,Mild tachycardia,"skip rule, confidence LOW",skip_rule,low
-5,vital,Respiratory rate,25,,/min,> 24 /min,3,,,Tachypnea,"skip rule, confidence LOW",skip_rule,low
-6,vital,Systolic BP,,89,mmHg,< 90 mmHg,4,,,Hypotension/shock — ESI-1/2,"skip rule, confidence LOW",skip_rule,low
-7,vital,Pain score,7,,/10,>= 7/10,1,,,Severe pain modifier,"assume 0, note in gap",assume_zero,none
-8,complaint,Chief complaint,,,,stroke symptoms (FAST),6,stroke,many,Time-critical → push ESI-2; NHAMCS stroke ~53% admit,required field - cannot be missing,,
-9,complaint,Chief complaint,,,,chest pain (cardiac concern),6,cardiac,many,Cardiac dx ~70% admit vs 14% all chest pain → ESI-2,required field - cannot be missing,,
-10,complaint,Chief complaint,,,,shortness of breath,4,respiratory,many,NHAMCS SOB ~26% admit,required field - cannot be missing,,
-11,complaint,Chief complaint,,,,severe headache / neuro,4,neuro,many,High-risk neuro presentation,required field - cannot be missing,,
-12,complaint,Chief complaint,,,,abdominal pain,2,abdominal,many,NHAMCS abdo ~9% admit — lower baseline,required field - cannot be missing,,
-13,complaint,Chief complaint,,,,other / general,1,general,one,Default low weight,required field - cannot be missing,,
-14,complaint,Chief complaint,,,,fever / suspected infection,4,sepsis,many,Infection/sepsis — fever + abnormal vitals push ESI‑2; MC‑MED ~62–74% admit;mean true ESI 2.6,required field - cannot be missing,,
-15,complaint,Chief complaint,,,,major trauma (mechanism),5,trauma,many,Major trauma mechanism — anchors ESI‑2; MC‑MED trauma/auto‑ped mean true ESI ~2.0,required field - cannot be missing,,
-16,complaint,Chief complaint,,,,generalized weakness / deterioration,3,weakness,many,Generalized weakness - often elderly; ESI-3; escalates to ESI-2 with abnormal vitals; ~72% admit,required field - cannot be missing,,
-17,complaint,Chief complaint,,,,"minor injury (sprain, small laceration)",1,minor_injury,one,single X-ray or repair,required field - cannot be missing,,
-18,complaint,Chief complaint,,,,"minor complaint (rash, med refill, cold)",1,minor_general,none,"exam only, fast-track",required field - cannot be missing,,
-19,complaint,Chief complaint,,,,syncope (fainting),3,syncope,one,"ECG, labs, monitor — NHAMCS ~21% admit",required field - cannot be missing,,
+5,vital,Heart rate,,59,bpm,< 60 bpm,1,,,Bradycardia,"skip rule, confidence LOW",skip_rule,low
+6,vital,Respiratory rate,25,,/min,> 24 /min,3,,,Tachypnea,"skip rule, confidence LOW",skip_rule,low
+7,vital,Systolic BP,,89,mmHg,< 90 mmHg,4,,,Hypotension/shock — ESI-1/2,"skip rule, confidence LOW",skip_rule,low
+8,vital,Systolic BP,90,99,mmHg,90-99 mmHg,1,,,Borderline-low SBP,"skip rule, confidence LOW",skip_rule,low
+9,vital,Pain score,7,,/10,>= 7/10,1,,,Severe pain modifier,"assume 0, note in gap",assume_zero,none
+10,complaint,Chief complaint,,,,stroke symptoms (FAST),6,stroke,many,Time-critical → push ESI-2; NHAMCS stroke ~53% admit,required field - cannot be missing,,
+11,complaint,Chief complaint,,,,chest pain (cardiac concern),6,cardiac,many,Cardiac dx ~70% admit vs 14% all chest pain → ESI-2,required field - cannot be missing,,
+12,complaint,Chief complaint,,,,shortness of breath,4,respiratory,many,NHAMCS SOB ~26% admit,required field - cannot be missing,,
+13,complaint,Chief complaint,,,,severe headache / neuro,4,neuro,many,High-risk neuro presentation,required field - cannot be missing,,
+14,complaint,Chief complaint,,,,abdominal pain,2,abdominal,many,NHAMCS abdo ~9% admit — lower baseline,required field - cannot be missing,,
+15,complaint,Chief complaint,,,,other / general,1,general,one,Default low weight,required field - cannot be missing,,
+16,complaint,Chief complaint,,,,fever / suspected infection,4,sepsis,many,Infection/sepsis — fever + abnormal vitals push ESI‑2; MC‑MED ~62–74% admit;mean true ESI 2.6,required field - cannot be missing,,
+17,complaint,Chief complaint,,,,major trauma (mechanism),5,trauma,many,Major trauma mechanism — anchors ESI‑2; MC‑MED trauma/auto‑ped mean true ESI ~2.0,required field - cannot be missing,,
+18,complaint,Chief complaint,,,,generalized weakness / deterioration,3,weakness,many,Generalized weakness - often elderly; ESI-3; escalates to ESI-2 with abnormal vitals; ~72% admit,required field - cannot be missing,,
+19,complaint,Chief complaint,,,,"minor injury (sprain, small laceration)",1,minor_injury,one,single X-ray or repair,required field - cannot be missing,,
+20,complaint,Chief complaint,,,,"minor complaint (rash, med refill, cold)",1,minor_general,none,"exam only, fast-track",required field - cannot be missing,,
+21,complaint,Chief complaint,,,,syncope (fainting),3,syncope,many,"ECG, labs, monitor — NHAMCS ~21% admit",required field - cannot be missing,,

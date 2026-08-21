@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # server; set CORS_ALLOW_ORIGINS in the environment to the real frontend
     # origin(s) per deploy. Never "*" — allow_credentials forbids it anyway.
     CORS_ALLOW_ORIGINS: str = "http://localhost:5173"
+    # Epic on FHIR "Non-Production Client ID". Consumed directly by
+    # scripts/epic_fhir_pull.py via os.environ; declared here only so pydantic
+    # accepts it in .env (Settings forbids undeclared env vars). Optional so
+    # environments without FHIR configured (CI, tests) still build.
+    FHIR_CLIENT_ID: str = ""
 
     @property
     def DATABASE_URL(self) -> str:

@@ -21,7 +21,7 @@
       "_name": "complaint_only_minor_general",
       "_why": "Lowest-weight complaint alone; all vitals normal so no vital rule fires.",
       "intake": {"chief_complaint": "minor_general", "heart_rate": 78, "blood_pressure_systolic": 118, "oxygen_saturation": 98, "respiration_rate": 16, "pain_level": 2},
-      "expect": {"fired_rules": [15], "severity_score": 1, "esi_band": 4}
+      "expect": {"fired_rules": [18], "severity_score": 1, "esi_band": 4}
     },
     {
       "_name": "complaint_only_cardiac",

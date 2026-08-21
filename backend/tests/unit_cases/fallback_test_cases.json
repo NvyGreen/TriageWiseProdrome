@@ -265,7 +265,7 @@
       },
       "expect": {
         "severity_score": 3,
-        "esi_band": 4,
+        "esi_band": 3,
         "fallbacks_applied": [
           {
             "field": "heart_rate",

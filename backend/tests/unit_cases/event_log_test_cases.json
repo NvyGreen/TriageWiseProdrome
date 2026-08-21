@@ -142,7 +142,7 @@
         "type": "submit_intake",
         "setup": {
           "deactivate_rules": [
-            13
+            15
           ]
         },
         "intake": {

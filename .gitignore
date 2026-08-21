@@ -50,3 +50,6 @@ __pycache__/
 # VS Code settings
 .vscode/*
 !.vscode/extensions.json
+
+# TEMP GITIGNORE: Still working on metrics
+scoring_validation.md

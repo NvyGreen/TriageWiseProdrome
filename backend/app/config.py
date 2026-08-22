@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # server; set CORS_ALLOW_ORIGINS in the environment to the real frontend
     # origin(s) per deploy. Never "*" — allow_credentials forbids it anyway.
     CORS_ALLOW_ORIGINS: str = "http://localhost:5173"
+    # Per-request latency logging (the `PERF ...` timing middleware). Off by
+    # default so real deploys stay quiet; the perf smoke script turns it on via
+    # env for its own server. Gated at middleware registration, so when off the
+    # middleware isn't in the stack at all.
+    PERF_LOG_ENABLED: bool = False
     # Epic on FHIR "Non-Production Client ID". Consumed directly by
     # scripts/epic_fhir_pull.py via os.environ; declared here only so pydantic
     # accepts it in .env (Settings forbids undeclared env vars). Optional so

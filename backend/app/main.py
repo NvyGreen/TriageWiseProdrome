@@ -1,3 +1,6 @@
+import logging
+import sys
+import time
 import uuid
 from fastapi import FastAPI, Request, status, Depends
 from fastapi.exceptions import RequestValidationError, HTTPException
@@ -29,6 +32,38 @@ class MedicalDisclaimerResponse(JSONResponse):
 
 
 app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+
+# Per-request latency logging. One line per request:
+#   PERF <method> <path> <status> <ms>
+# Emitted to stdout on its own logger so it survives regardless of uvicorn's
+# logging config and can be captured from the server log.
+perf_logger = logging.getLogger("perf")
+if not perf_logger.handlers:
+    _perf_handler = logging.StreamHandler(sys.stdout)
+    _perf_handler.setFormatter(logging.Formatter("%(message)s"))
+    perf_logger.addHandler(_perf_handler)
+    perf_logger.setLevel(logging.INFO)
+    perf_logger.propagate = False
+
+
+# On the top-level app so it wraps the mounted sub-apps too (their requests are
+# dispatched inside the root app's routing, so this timer sees them all).
+# Registered only when PERF_LOG_ENABLED — when off it isn't in the stack at all,
+# so real deploys pay zero per-request overhead.
+async def timing_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    perf_logger.info(
+        "PERF %s %s %d %.2f",
+        request.method, request.url.path, response.status_code, elapsed_ms,
+    )
+    return response
+
+
+if get_settings().PERF_LOG_ENABLED:
+    app.middleware("http")(timing_middleware)
+
 
 # On the top-level app so it wraps the mounted sub-apps too. Origins come from
 # settings (env-configured per deploy), never "*".

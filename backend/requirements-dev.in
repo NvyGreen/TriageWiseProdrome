@@ -15,3 +15,5 @@
 
 pytest
 pytest-cov
+# Load/stress driver for the queue concurrency + throughput tests.
+locust==2.46.3

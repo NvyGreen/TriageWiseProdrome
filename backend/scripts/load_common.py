@@ -1,0 +1,233 @@
+"""Shared helpers for the queue load/stress drivers.
+
+Importing this module repoints DB_NAME to the *_test* database BEFORE any app.*
+import (so the oracle's DB session and the server both target the test DB), then
+exposes:
+  - a live-uvicorn launcher (single worker — the in-memory queue is per-process)
+  - an IntakeCreate payload builder that spreads records across ESI bands
+  - the ordering ORACLE: expected queue order from the DB, and a checker that
+    compares it to the actual queue for lost / duplicate / misordered entries
+
+Reused by queue_concurrency_smoke.py (barrier burst) and, later, a Locust driver.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+from pathlib import Path
+
+BACKEND = Path(__file__).resolve().parents[1]
+
+# Repoint to the _test DB BEFORE importing app.* (mirrors conftest) so the
+# oracle's SessionLocal hits the same DB the server writes to.
+sys.path.insert(0, str(BACKEND))
+from app.config import get_settings  # noqa: E402
+
+_base = get_settings().DB_NAME
+TEST_DB = _base if _base.endswith("_test") else f"{_base}_test"
+os.environ["DB_NAME"] = TEST_DB
+get_settings.cache_clear()
+
+from sqlalchemy import select  # noqa: E402
+from app.dependencies import SessionLocal  # noqa: E402
+from app.models.intake_record import IntakeRecord  # noqa: E402
+from app.models.patient import Patient  # noqa: E402
+from app.models.patient_severity import PatientSeverity  # noqa: E402
+
+# Rotated across records so the queue spans multiple ESI bands (weights differ
+# per complaint) — makes ordering non-trivial to verify.
+COMPLAINTS = [
+    "cardiac", "respiratory", "abdominal", "neuro", "stroke", "syncope",
+    "sepsis", "trauma", "weakness", "general", "minor_injury", "minor_general",
+]
+
+
+# ---- HTTP -----------------------------------------------------------------
+
+def http_req(method, url, body=None, headers=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            raw = r.read().decode()
+            return r.status, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        return e.code, None
+
+
+def unwrap(resp_body):
+    """Strip the MedicalDisclaimerResponse envelope."""
+    if isinstance(resp_body, dict) and "payload" in resp_body:
+        return resp_body["payload"]
+    return resp_body
+
+
+def make_intake(i):
+    """A valid, distinct IntakeCreate body. Vitals vary to widen band/flag spread;
+    diastolic stays below systolic to pass validation."""
+    return {
+        "name": f"QConc {i}",
+        "date_of_birth": "1980-05-17",
+        "sex": "M",
+        "chief_complaint": COMPLAINTS[i % len(COMPLAINTS)],
+        "heart_rate": 70 + (i * 7) % 80,          # 70..149
+        "blood_pressure_systolic": 100 + (i % 40),  # 100..139
+        "blood_pressure_diastolic": 60 + (i % 20),  # 60..79  (< systolic)
+        "temperature": 98.6,
+        "oxygen_saturation": 90 + (i % 11),        # 90..100
+        "respiration_rate": 14 + (i % 12),         # 14..25
+        "pain_level": i % 11,                      # 0..10
+        "pregnancy_status": "none",
+    }
+
+
+def post_intake(base_url, i):
+    """POST one intake; return its intake_id on 201, else None."""
+    status, body = http_req(
+        "POST", f"{base_url}/patients/", make_intake(i),
+        {"Idempotency-Key": uuid.uuid4().hex},
+    )
+    if status != 201:
+        return None
+    return unwrap(body)["intake_id"]
+
+
+def fetch_queue_ids(base_url):
+    """intake_ids in queue order from GET /queue/."""
+    status, body = http_req("GET", f"{base_url}/queue/")
+    if status != 200:
+        raise RuntimeError(f"GET /queue returned {status}")
+    entries = unwrap(body)["entries"]
+    return [e["intake_id"] for e in entries]
+
+
+# ---- server ---------------------------------------------------------------
+
+def start_server(port, log_path):
+    """Launch a SINGLE-worker uvicorn on the _test DB. Single worker is required:
+    the queue is per-process, so >1 worker would split it."""
+    child_env = {**os.environ, "DB_NAME": TEST_DB, "PYTHONPATH": str(BACKEND)}
+    log_file = open(log_path, "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app.main:app",
+         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+        cwd=str(BACKEND), env=child_env, stdout=log_file, stderr=subprocess.STDOUT,
+    )
+    return proc, log_file
+
+
+def wait_until_up(base_url, timeout=45):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            status, _ = http_req("GET", f"{base_url}/")
+            if status == 200:
+                return
+        except urllib.error.URLError:
+            pass
+        time.sleep(0.3)
+    raise RuntimeError(f"server did not come up at {base_url}")
+
+
+def stop_server(proc, log_file):
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    log_file.close()
+
+
+# ---- ordering oracle ------------------------------------------------------
+
+def expected_order(intake_ids):
+    """The order the queue SHOULD be in, derived independently from the DB:
+    sort by the same key insert() uses — (esi_band, flag_tier, arrival_epoch,
+    intake_id). esi_band/flag_tier come from patient_severity, arrival from
+    intake_record.created_at (the exact value insert() timestamped)."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            select(
+                PatientSeverity.intake_id,
+                PatientSeverity.system_ESI,
+                PatientSeverity.flag_tier,
+                IntakeRecord.created_at,
+            )
+            .join(IntakeRecord, IntakeRecord.intake_id == PatientSeverity.intake_id)
+            .where(PatientSeverity.intake_id.in_(intake_ids))
+        ).all()
+    finally:
+        db.close()
+
+    keyed = [
+        (int(esi[-1]), tier, created.timestamp(), iid)
+        for iid, esi, tier, created in rows
+    ]
+    keyed.sort()
+    return [k[3] for k in keyed]
+
+
+def db_run_intake_ids(name_prefix="QConc "):
+    """intake_ids this run created, from the DB (server truth) via patient-name
+    prefix. Reliable even when a load tool kills client greenlets mid-flight —
+    unlike a client-side 'submitted' list, which undercounts in-flight requests
+    the server still committed."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            select(IntakeRecord.intake_id)
+            .join(Patient, Patient.patient_id == IntakeRecord.patient_id)
+            .where(Patient.name.like(f"{name_prefix}%"))
+        ).all()
+    finally:
+        db.close()
+    return [r[0] for r in rows]
+
+
+def check_queue(submitted_ids, actual_ids):
+    """Compare the actual queue to the DB-derived order. `submitted_ids` is the
+    membership truth (what SHOULD be queued); ordering is checked over the queue's
+    ACTUAL members so a membership mismatch can't masquerade as a misordering."""
+    submitted = set(submitted_ids)
+    actual_set = set(actual_ids)
+
+    lost = sorted(submitted - actual_set)          # created but not in queue
+    unexpected = sorted(actual_set - submitted)    # in queue but not created
+
+    seen, duplicates = set(), []
+    for x in actual_ids:
+        if x in seen:
+            duplicates.append(x)
+        seen.add(x)
+
+    # Order the queue's own members by the sort key and check the queue matches.
+    expected = expected_order(actual_ids)
+    misordered = actual_ids != expected
+    misorder_index = None
+    if misordered:
+        misorder_index = next(
+            (i for i, (a, e) in enumerate(zip(actual_ids, expected)) if a != e),
+            min(len(actual_ids), len(expected)),
+        )
+
+    ok = not lost and not unexpected and not duplicates and not misordered
+    return {
+        "ok": ok,
+        "submitted": len(submitted_ids),
+        "in_queue": len(actual_ids),
+        "lost": lost,
+        "unexpected": unexpected,
+        "duplicates": duplicates,
+        "misordered": misordered,
+        "first_misorder_index": misorder_index,
+        "expected": expected,
+        "actual": actual_ids,
+    }

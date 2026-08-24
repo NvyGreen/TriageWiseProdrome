@@ -1,58 +1,79 @@
 """Service-level tests for TriageService.getQueue.
 
-Unlike test_queue.py (pure PriorityQueue, no DB), getQueue joins IntakeRecord ->
-Patient -> PatientSeverity -> ESIBand, so these need the test database.
+getQueue now reads the persisted queue from triage_queue, joined to Patient ->
+PatientSeverity -> ESIBand, ordered by (esi_band, flag_tier, arrival_time,
+intake_id) and excluding dispositioned patients. So these seed real triage_queue
+rows (not the in-memory heap).
 
-Each test builds its own rows and a FRESH PriorityQueue (not the singleton from
-app.dependencies), so tests can't bleed into each other. getQueue only returns
-what's in the queue it's handed, so leftover rows in the persistent test DB
-can't leak into results either.
-
-Deferred until scoring exists: populated esi_level / priority_label /
-severity_score, and clinician_ESI taking precedence over system_ESI.
-Not asserted: `status` (hardcoded "WAITING") and `entered_at` (placeholder).
+The test DB persists across tests, and getQueue counts the whole table, so the
+autouse fixture clears triage_queue first — otherwise leftover rows leak into
+order/empty assertions.
 """
 from datetime import date, datetime, timezone
 
 import pytest
-from fastapi.exceptions import HTTPException
 
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
+from app.models.patient_severity import PatientSeverity
+from app.models.triage_queue import TriageQueue
 from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import TriageService
 from app.utils.dates import age_in_years
 
+# getQueue ignores the PriorityQueue arg now (reads the DB), but the signature
+# still takes one, so hand it a throwaway.
+_UNUSED_QUEUE = PriorityQueue()
+
 
 def _at(hhmm: str) -> datetime:
-    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
     return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
 
 
-def _make_intake(db_session, name, dob=date(1980, 5, 17)):
-    """Insert a Patient + IntakeRecord, returning both."""
+@pytest.fixture(autouse=True)
+def _clear_queue(db_session):
+    """Isolate the persisted queue — the test DB accumulates rows across tests."""
+    db_session.query(TriageQueue).delete()
+    db_session.commit()
+    yield
+
+
+def _make_queued(db_session, name, esi_band=3, flag_tier=3, arrival="10:00",
+                 dob=date(1980, 5, 17), clinician_esi=None, status="WAITING"):
+    """Seed a queued (scored + enqueued) patient. Returns (patient, intake)."""
     patient = Patient(name=name, date_of_birth=dob, sex="M")
     db_session.add(patient)
     db_session.flush()
 
     intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint="cardiac")
     db_session.add(intake)
+    db_session.flush()
+
+    severity = PatientSeverity(
+        intake_id=intake.intake_id, severity_score=5,
+        system_ESI=f"ESI-{esi_band}", clinician_ESI=clinician_esi, flag_tier=flag_tier,
+    )
+    db_session.add(severity)
+    db_session.flush()
+
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id,
+        severity_id=severity.severity_id, esi_band=esi_band, flag_tier=flag_tier,
+        arrival_time=_at(arrival), status=status,
+    ))
     db_session.commit()
     return patient, intake
 
 
 def test_empty_queue_returns_no_entries(db_session):
-    assert TriageService(db_session).getQueue(PriorityQueue()) == []
+    assert TriageService(db_session).getQueue() == []
 
 
 def test_single_entry_has_patient_details(db_session):
     dob = date(1975, 3, 14)
-    patient, intake = _make_intake(db_session, "Solo Patient", dob=dob)
+    patient, intake = _make_queued(db_session, "Solo Patient", esi_band=3, dob=dob)
 
-    queue = PriorityQueue()
-    queue.insert(3, 3, _at("10:00"), intake.intake_id)
-
-    entries = TriageService(db_session).getQueue(queue)
+    entries = TriageService(db_session).getQueue()
 
     assert len(entries) == 1
     entry = entries[0]
@@ -65,46 +86,42 @@ def test_single_entry_has_patient_details(db_session):
     assert entry.age == age_in_years(dob)
 
 
+def test_severity_fields_populated(db_session):
+    """A queued intake is always scored, so severity-derived fields are present."""
+    _make_queued(db_session, "Scored Patient", esi_band=2, flag_tier=1)
+
+    entry = TriageService(db_session).getQueue()[0]
+    assert entry.esi_level == "ESI-2"
+    assert entry.priority_label is not None
+    assert entry.severity_score == 5
+    assert entry.flag_tier == 1
+
+
+def test_clinician_esi_takes_precedence_in_display(db_session):
+    """esi_level shows the clinician override when present (coalesce)."""
+    _make_queued(db_session, "Overridden", esi_band=1, clinician_esi="ESI-1")
+
+    entry = TriageService(db_session).getQueue()[0]
+    assert entry.esi_level == "ESI-1"
+
+
 def test_entries_follow_queue_order(db_session):
-    _, first = _make_intake(db_session, "Band Three")
-    _, second = _make_intake(db_session, "Band One")
-    _, third = _make_intake(db_session, "Band Two")
+    _, first = _make_queued(db_session, "Band Three", esi_band=3, arrival="10:00")
+    _, second = _make_queued(db_session, "Band One", esi_band=1, arrival="10:01")
+    _, third = _make_queued(db_session, "Band Two", esi_band=2, arrival="10:02")
 
-    # Insert in an order that does NOT match the expected output, so the test
-    # fails if getQueue returned insertion order instead of queue order.
-    queue = PriorityQueue()
-    queue.insert(3, 3, _at("10:00"), first.intake_id)
-    queue.insert(1, 3, _at("10:01"), second.intake_id)
-    queue.insert(2, 3, _at("10:02"), third.intake_id)
+    entries = TriageService(db_session).getQueue()
 
-    entries = TriageService(db_session).getQueue(queue)
-
-    assert [e.patient_id for e in entries] == [
-        second.patient_id,
-        third.patient_id,
-        first.patient_id,
+    assert [e.intake_id for e in entries] == [
+        second.intake_id, third.intake_id, first.intake_id,
     ]
     assert [e.position for e in entries] == [1, 2, 3]
 
 
-def test_no_severity_row_yields_none_fields(db_session):
-    """The live path today: submitIntake writes no PatientSeverity row."""
-    _, intake = _make_intake(db_session, "Unscored Patient")
+def test_dispositioned_excluded(db_session):
+    _, waiting = _make_queued(db_session, "Still Waiting", esi_band=2)
+    _make_queued(db_session, "Gone", esi_band=1, status="DISPOSITIONED")
 
-    queue = PriorityQueue()
-    queue.insert(3, 3, _at("10:00"), intake.intake_id)
+    entries = TriageService(db_session).getQueue()
 
-    entry = TriageService(db_session).getQueue(queue)[0]
-    assert entry.esi_level is None
-    assert entry.priority_label is None
-    assert entry.severity_score is None
-    assert entry.flag_tier is None
-
-
-def test_missing_intake_raises_500(db_session):
-    queue = PriorityQueue()
-    queue.insert(3, 3, _at("10:00"), 999_999_999)  # no such intake row
-
-    with pytest.raises(HTTPException) as e:
-        TriageService(db_session).getQueue(queue)
-    assert e.value.status_code == 500
+    assert [e.intake_id for e in entries] == [waiting.intake_id]

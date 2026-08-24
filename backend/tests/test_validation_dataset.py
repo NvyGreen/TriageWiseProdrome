@@ -59,7 +59,6 @@ def _build_intake(case: dict) -> IntakeCreate:
 
 
 def test_clinician_override_ranking(db_session):
-    queue = PriorityQueue()
     service = TriageService(db_session)
 
     clinician_esi = {}   # case_id -> clinician ESI label
@@ -69,7 +68,7 @@ def test_clinician_override_ranking(db_session):
         cid = case["case_id"]
         clinician_esi[cid] = case["clinician_esi"]
 
-        result = service.submitIntake(_build_intake(case), queue)
+        result = service.submitIntake(_build_intake(case))
 
         severity = db_session.scalar(
             select(PatientSeverity).where(PatientSeverity.intake_id == result.intake_id)
@@ -77,13 +76,13 @@ def test_clinician_override_ranking(db_session):
         # Override only where the engine disagrees with the clinician label.
         if severity.system_ESI != case["clinician_esi"]:
             service.applyOverride(
-                severity.severity_id, case["clinician_esi"], ReasonCode.OTHER, None, queue
+                severity.severity_id, case["clinician_esi"], ReasonCode.OTHER, None
             )
 
         intake_id_of[cid] = result.intake_id
 
     # Position of each case in the finished queue.
-    entries = service.getQueue(queue)
+    entries = service.getQueue()
     position_by_intake = {e.intake_id: e.position for e in entries}
     position = {cid: position_by_intake[iid] for cid, iid in intake_id_of.items()}
 

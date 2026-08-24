@@ -94,10 +94,6 @@ function QueueRow({ patient, status, onStatusChange, pending }) {
     const modifiers = STATUS_MODIFIERS[status] ?? STATUS_MODIFIERS.WAITING;
     const esiClass = esiModifier(patient.esi_level);
 
-    // Dispositioning drops the intake from the queue, so the API has no way to
-    // put it back. Locked until the queue is persisted and reversal works.
-    const locked = status === "DISPOSITIONED";
-
     return (
         <tr className={modifiers.row}>
             {/* A dispositioned patient has left the queue, so a rank would
@@ -151,16 +147,13 @@ function QueueRow({ patient, status, onStatusChange, pending }) {
             <td className='ag'>{formatEnteredAt(patient.entered_at)}</td>
 
             <td>
-                <span
-                    className={`statussel ${modifiers.pill}`}
-                    title={locked ? 'A dispositioned patient has left the queue.' : undefined}
-                >
+                <span className={`statussel ${modifiers.pill}`}>
                     <Dropdown
                         name='status'
                         value={status}
                         onChange={onStatusChange}
                         options={statusOptions}
-                        disabled={locked || pending}
+                        disabled={pending}
                         ariaLabel={`Status for ${patient.name}`}
                     />
                 </span>
@@ -216,18 +209,19 @@ function TriageQueue() {
             setEntries(queueEntries);
             setLastUpdated(new Date());
 
-            // getQueue reports every entry as WAITING, so a plain overwrite
-            // would revert any status set this session. Local values win.
-            // Remove this merge once status is persisted server-side.
+            // Status is persisted now, so the server wins for every entry it
+            // returns — otherwise another clinician's change would be ignored
+            // for the rest of this session. Local values survive only for ids
+            // the response omits, which is how pinned (dispositioned) rows keep
+            // their status when getQueue filters them out.
             setStatuses((prev) => {
-                const merged = { ...prev };
+                const next = { ...prev };
 
                 for (const patient of queueEntries) {
-                    merged[patient.intake_id] =
-                        prev[patient.intake_id] ?? patient.status;
+                    next[patient.intake_id] = patient.status;
                 }
 
-                return merged;
+                return next;
             });
         } catch (fetchError) {
             // An aborted request is a cancelled render, not a failure.
@@ -331,13 +325,19 @@ function TriageQueue() {
                 return;
             }
 
-            // The API drops dispositioned patients from the queue, so keep a
-            // copy before refetching or the row would simply vanish.
+            // getQueue excludes dispositioned patients, so keep a copy before
+            // refetching or the row would simply vanish. Reversing the
+            // disposition puts them back in the response, so the copy is
+            // dropped rather than shadowing the server's row.
             if (value === "DISPOSITIONED") {
                 setPinned((prev) =>
                     prev.some((entry) => entry.intake_id === intakeId)
                         ? prev
                         : [...prev, patient]
+                );
+            } else {
+                setPinned((prev) =>
+                    prev.filter((entry) => entry.intake_id !== intakeId)
                 );
             }
 

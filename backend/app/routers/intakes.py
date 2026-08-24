@@ -20,9 +20,9 @@ def test_intakes():
     return {"message": "Intakes API is running"}
 
 @router.patch("/{intake_id}", status_code=status.HTTP_200_OK)
-def update_patient(intake_id: int, updates: IntakeUpdate, queue: PriorityQueue = Depends(get_queue), db: Session = Depends(get_db)):
+def update_patient(intake_id: int, updates: IntakeUpdate, db: Session = Depends(get_db)):
     triageService = TriageService(db)
-    result = triageService.updatePatient(intake_id, updates, queue)
+    result = triageService.updatePatient(intake_id, updates)
     response_body = {
         "message": "Patient updated successfully",
         "intake_id": result.intake_id,

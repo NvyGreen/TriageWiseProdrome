@@ -12,7 +12,7 @@ def test_queue():
 
 
 @router.get("/", status_code=status.HTTP_200_OK)
-def queue_triage(queue: PriorityQueue = Depends(get_queue), db: Session = Depends(get_db)):
+def queue_triage(db: Session = Depends(get_db)):
     triageService = TriageService(db)
-    entries = triageService.getQueue(queue)
+    entries = triageService.getQueue()
     return {"entries": entries}

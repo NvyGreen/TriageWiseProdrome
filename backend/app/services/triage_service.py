@@ -2,7 +2,7 @@ import logging
 from enum import StrEnum
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -18,6 +18,7 @@ from ..models.ai_explanation import AIExplanation
 from ..models.red_flag_rule import RedFlagRule
 from ..models.override import Override
 from ..models.condition_reference import ConditionReference
+from ..models.triage_queue import TriageQueue
 
 from ..schemas.intake_create import IntakeCreate
 from ..schemas.intake_update import IntakeUpdate, Status, VITAL_FIELDS
@@ -85,7 +86,27 @@ class TriageService:
         self.redFlagLayer = RedFlagLayer(db)
         self.explanationBuilder = ExplanationBuilder(db)
 
-    def submitIntake(self, intake: IntakeCreate, queue: PriorityQueue) -> Result:
+    def _db_queue_position(self, esi_band, flag_tier, arrival_time, intake_id) -> int:
+        # Position in the persisted queue: 1 + rows ranked strictly ahead by the
+        # sort key (esi_band, flag_tier, arrival_time, intake_id), excluding
+        # dispositioned patients (they keep their row but are no longer waiting).
+        # Strict < excludes this record, so it's correct pre-commit and regardless
+        # of whether this record's own row is up to date — it needs only rows this
+        # session's transaction can see.
+        ahead = self.db.scalar(
+            select(func.count())
+            .select_from(TriageQueue)
+            .where(
+                TriageQueue.status != Status.DISPOSITIONED,
+                tuple_(
+                    TriageQueue.esi_band, TriageQueue.flag_tier,
+                    TriageQueue.arrival_time, TriageQueue.intake_id,
+                ) < (esi_band, flag_tier, arrival_time, intake_id),
+            )
+        )
+        return ahead + 1
+
+    def submitIntake(self, intake: IntakeCreate) -> Result:
         try:
             new_patient = Patient(
                 name=intake.name,
@@ -115,7 +136,7 @@ class TriageService:
             self.db.add(intake_created)
 
             # Scores intake and places record in queue
-            severityResult: SeverityResult = self.scoringEngine.score(new_intake, self.redFlagLayer, self.db)
+            severity_id, severityResult = self.scoringEngine.score(new_intake, self.redFlagLayer, self.db)
             score_calculated = EventLog(
                 event_type=EventType.SCORE_CALCULATED,
                 patient_id=patient_id,
@@ -137,7 +158,24 @@ class TriageService:
                 self.db.add(red_flag_fired)
 
             esi_num = int(severityResult.esi_level[-1])
-            queue_position = queue.insert(esi_num, severityResult.flag_tier, new_intake.created_at, new_intake.intake_id)
+
+            # Persistent version
+            queue_it = TriageQueue(
+                patient_id=patient_id,
+                intake_id=new_intake.intake_id,
+                severity_id=severity_id,
+                esi_band=esi_num,
+                flag_tier=severityResult.flag_tier,
+                arrival_time=new_intake.created_at
+            )
+            self.db.add(queue_it)
+
+            # Position from the persisted queue.
+            queue_position = self._db_queue_position(
+                esi_num, severityResult.flag_tier,
+                new_intake.created_at, new_intake.intake_id,
+            )
+
             queued = EventLog(
                 event_type=EventType.QUEUED,
                 patient_id=patient_id,
@@ -153,84 +191,63 @@ class TriageService:
             self.db.flush()
             return Result(new_intake.intake_id, severityResult.severity_score, queue_position)
         except SQLAlchemyError as e:
-            try:
-                queue.remove(new_intake.intake_id)
-            except ValueError:
-                pass
-
             self.db.rollback()
             logger.exception("Intake creation failed")
             raise HTTPException(status_code=500) from e
         except CannotScoreError:
-            try:
-                queue.remove(new_intake.intake_id)
-            except ValueError:
-                pass
-
             self.db.rollback()
             logger.exception("The intake is valid but cannot be scored")
             raise UnscoreableException()
 
 
-    def getQueue(self, queue: PriorityQueue) -> list[QueueEntry]:
-        intake_ids = queue.orderedIntakeIds()
-        if not intake_ids:
-            return []
-
-        # A clinician ESI overrides the system one; join the band off whichever wins.
+    def getQueue(self) -> list[QueueEntry]:
+        # Read from triage_queue (the persisted source of truth), ordered by the
+        # sort key, excluding dispositioned patients. A clinician ESI overrides the
+        # system one for display; the band join uses whichever wins.
         effective_esi = func.coalesce(PatientSeverity.clinician_ESI, PatientSeverity.system_ESI)
 
-        # One query for the whole queue instead of four per patient. The severity
-        # and band joins are OUTER because scoring may not have run yet.
+        # One query for the whole queue. severity_id is NOT NULL on triage_queue and
+        # a queued intake is always scored, so these joins are INNER.
         stmt = (
-            select(IntakeRecord, Patient, PatientSeverity, ESIBand.priority,
+            select(TriageQueue, Patient, PatientSeverity, ESIBand.priority,
                    effective_esi.label("esi_level"))
-            .join(Patient, Patient.patient_id == IntakeRecord.patient_id)
-            .outerjoin(PatientSeverity, PatientSeverity.intake_id == IntakeRecord.intake_id)
+            .join(Patient, Patient.patient_id == TriageQueue.patient_id)
+            .join(PatientSeverity, PatientSeverity.severity_id == TriageQueue.severity_id)
             .outerjoin(ESIBand, ESIBand.esi_level == effective_esi)
-            .where(IntakeRecord.intake_id.in_(intake_ids))
+            .where(TriageQueue.status != Status.DISPOSITIONED)
+            .order_by(
+                TriageQueue.esi_band, TriageQueue.flag_tier,
+                TriageQueue.arrival_time, TriageQueue.intake_id,
+            )
         )
-        rows_by_intake_id = {row.IntakeRecord.intake_id: row for row in self.db.execute(stmt).all()}
 
         entries = []
-        # IN doesn't preserve order, so queue order comes from walking intake_ids.
-        for i, intake_id in enumerate(intake_ids):
-            row = rows_by_intake_id.get(intake_id)
-            if row is None:
-                logger.error("intake_id wasn't in database when it should be")
-                raise HTTPException(status_code=500)
-
-            record, patient, severity = row.IntakeRecord, row.Patient, row.PatientSeverity
-
-            # TODO: Once queue is persisted to database, these should never be none
-            esi_level = row.esi_level
-            priority_label = row.priority
-            severity_score = severity.severity_score if severity is not None else None
-            flag_tier = severity.flag_tier if severity is not None else None
-            if severity is not None and priority_label is None:
+        for i, row in enumerate(self.db.execute(stmt).all()):
+            tq, patient, severity = row.TriageQueue, row.Patient, row.PatientSeverity
+            if row.priority is None:
                 logger.error("esi_level wasn't in database when it should be")
                 raise HTTPException(status_code=500)
 
-            entry = QueueEntry(
+            entries.append(QueueEntry(
                 i + 1,
                 patient.patient_id,
-                record.intake_id,
+                tq.intake_id,
                 patient.name,
                 age_in_years(patient.date_of_birth),
                 patient.sex,
-                esi_level,
-                flag_tier,
-                priority_label,
-                severity_score,
-                "WAITING",
-                record.created_at
-            )
-            entries.append(entry)
+                row.esi_level,
+                tq.flag_tier,
+                row.priority,
+                severity.severity_score,
+                tq.status,
+                tq.arrival_time,
+            ))
 
         return entries
     
 
-    def updatePatient(self, intake_id: int, updates: IntakeUpdate, queue: PriorityQueue) -> Result:
+    def updatePatient(self, intake_id: int, updates: IntakeUpdate) -> Result:
+        # Get all necessary records
         try:
             intake = self.db.get(IntakeRecord, intake_id)
         except SQLAlchemyError as e:
@@ -248,22 +265,38 @@ class TriageService:
             if severity is None:
                 logger.error("severity wasn't in database when it should be")
                 raise HTTPException(status_code=500)
+
+            stmt = select(TriageQueue).where(TriageQueue.intake_id == intake_id)
+            queue_record = self.db.scalar(stmt)
+            if queue_record is None:
+                logger.error("queue_record wasn't in database when it should be")
+                raise HTTPException(status_code=500)
+
         except SQLAlchemyError as e:
             self.db.rollback()
-            logger.exception("Getting patient severity failed")
+            logger.exception("Getting patient severity or triage queue information failed")
             raise HTTPException(status_code=500) from e
 
         # Status change, no re-queue
         if updates.status is not None:
-            # TODO: Persist status change in triage_queue table
+            try:
+                old_status = queue_record.status
+                queue_record.status = updates.status
+            except SQLAlchemyError as e:
+                self.db.rollback()
+                logger.exception("Updating status failed")
+                raise HTTPException(status_code=500) from e
+            
             if updates.status == Status.DISPOSITIONED:
                 try:
-                    queue.remove(intake_id)
                     new_event = EventLog(
                         event_type=EventType.STATUS_CHANGED,
                         patient_id=patient_id,
-                        intake_id=intake_id
-                        # TODO: Add details about the status change once persisted
+                        intake_id=intake_id,
+                        details={
+                            "old_status": old_status,
+                            "new_status": updates.status
+                        }
                     )
                     self.db.add(new_event)
                     self.db.flush()
@@ -271,23 +304,24 @@ class TriageService:
                     self.db.rollback()
                     logger.exception("Event logging failed")
                     raise HTTPException(status_code=500) from e
-                except ValueError:
-                    # TODO: Once triage_queue is implemented, may make this error out instead of a no-op
-                    # logger.exception("No intake with this id")
-                    # raise HTTPException(status_code=404)
-                    pass
                 return Result(intake_id, severity.severity_score)
             
             try:
                 new_event = EventLog(
                     event_type=EventType.STATUS_CHANGED,
                     patient_id=patient_id,
-                    intake_id=intake_id
-                    # TODO: Add details about the status change once persisted
+                    intake_id=intake_id,
+                    details={
+                        "old_status": old_status,
+                        "new_status": updates.status
+                    }
                 )
                 self.db.add(new_event)
                 self.db.flush()
-                queue_position = queue.getIntakePosition(intake_id)
+                queue_position = self._db_queue_position(
+                    queue_record.esi_band, queue_record.flag_tier,
+                    queue_record.arrival_time, intake_id,
+                )
                 return Result(intake_id, severity.severity_score, queue_position)
             except SQLAlchemyError as e:
                 self.db.rollback()
@@ -340,7 +374,7 @@ class TriageService:
                 old_esi = severity.clinician_ESI if severity.clinician_ESI is not None else severity.system_ESI
                 old_flag_tier = severity.flag_tier
 
-                severityResult: SeverityResult = self.scoringEngine.score(intake, self.redFlagLayer, self.db)
+                _, severityResult = self.scoringEngine.score(intake, self.redFlagLayer, self.db)
                 severity_score = severityResult.severity_score
                 score_calculated = EventLog(
                     event_type=EventType.SCORE_CALCULATED,
@@ -363,7 +397,19 @@ class TriageService:
                     self.db.add(red_flag_fired)
 
                 esi_num = int(severityResult.esi_level[-1])
-                old_position, new_position = queue.updatePatientPosition(intake_id, esi_num, severityResult.flag_tier)
+
+                # Persisted queue: read position BEFORE the change (queue_record
+                # still holds the old band/tier), then apply the change and recompute.
+                old_position = self._db_queue_position(
+                    queue_record.esi_band, queue_record.flag_tier,
+                    queue_record.arrival_time, intake_id,
+                )
+                queue_record.esi_band = esi_num
+                queue_record.flag_tier = severityResult.flag_tier
+                new_position = self._db_queue_position(
+                    esi_num, severityResult.flag_tier,
+                    queue_record.arrival_time, intake_id,
+                )
                 if old_position != new_position:
                     reprioritized = EventLog(
                         event_type=EventType.REPRIORITIZED,
@@ -392,7 +438,10 @@ class TriageService:
                 stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
                 severity = self.db.scalar(stmt)
                 severity_score = severity.severity_score if severity is not None else None
-                new_position = queue.getIntakePosition(intake_id)
+                new_position = self._db_queue_position(
+                    queue_record.esi_band, queue_record.flag_tier,
+                    queue_record.arrival_time, intake_id,
+                )
             
             self.db.flush()
             return Result(intake_id, severity_score, new_position)
@@ -556,11 +605,17 @@ class TriageService:
         )
 
 
-    def applyOverride(self, severity_id: int, clinician_esi: str, reason_code: ReasonCode, note: str | None, queue: PriorityQueue) -> Result:
+    def applyOverride(self, severity_id: int, clinician_esi: str, reason_code: ReasonCode, note: str | None) -> Result:
         try:
             severity = self.db.get(PatientSeverity, severity_id)
             if severity is None:
                 raise SeverityNotFoundError(severity_id)
+
+            stmt = select(TriageQueue).where(TriageQueue.severity_id == severity_id)
+            queue_record = self.db.scalar(stmt)
+            if queue_record is None:
+                logger.error("queue_record was none when it shouldn't be")
+                raise HTTPException(status_code=500)
             
             old_esi = severity.clinician_ESI if severity.clinician_ESI is not None else severity.system_ESI
             severity.clinician_ESI = clinician_esi
@@ -591,12 +646,19 @@ class TriageService:
             self.db.add(override_event)
             self.db.flush()
 
-            try:
-                old_position, new_position = queue.updatePatientPosition(severity.intake_id, int(clinician_esi[-1]), severity.flag_tier)
-            except ValueError as e:
-                self.db.rollback()
-                logger.exception("Intake wasn't in queue when it should be")
-                raise HTTPException(status_code=500) from e
+            new_band = int(clinician_esi[-1])
+
+            # Persisted queue: read position BEFORE the change (queue_record still
+            # holds the old band), then apply the change and recompute.
+            old_position = self._db_queue_position(
+                queue_record.esi_band, queue_record.flag_tier,
+                queue_record.arrival_time, severity.intake_id,
+            )
+            queue_record.esi_band = new_band
+            new_position = self._db_queue_position(
+                new_band, queue_record.flag_tier,
+                queue_record.arrival_time, severity.intake_id,
+            )
             
             if old_position != new_position:
                 reprioritized_event = EventLog(

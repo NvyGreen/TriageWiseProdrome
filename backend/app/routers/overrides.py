@@ -30,7 +30,6 @@ def test_overrides():
 def override_system(
     override: OverrideCreate,
     db: Session = Depends(get_db),
-    queue: PriorityQueue = Depends(get_queue),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=64)
 ):
     triageService = TriageService(db)
@@ -42,7 +41,7 @@ def override_system(
         # response class (all stored responses are 201 successes).
         return existing.response_body
     
-    result = triageService.applyOverride(override.severity_id, override.clinician_esi, override.reason_code, override.note, queue)
+    result = triageService.applyOverride(override.severity_id, override.clinician_esi, override.reason_code, override.note)
     response_body = {
         "message": "Override applied successfully",
         "intake_id": result.intake_id,

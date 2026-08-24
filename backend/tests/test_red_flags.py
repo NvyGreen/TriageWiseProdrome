@@ -61,7 +61,7 @@ def test_red_flags(case, db_session):
     intake = _seed(db_session, case["intake"])
 
     # Real scoring -> real drivers, so all_vitals_normal is genuinely derived.
-    severity = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    _, severity = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     score_before = severity.severity_score

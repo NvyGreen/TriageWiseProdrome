@@ -77,7 +77,7 @@ def _score_record(rec, engine, layer, db):
         db.add(intake)
         db.flush()
 
-        result = engine.score(intake, layer, db)
+        _, result = engine.score(intake, layer, db)
         return (
             int(result.esi_level[-1]),
             int(rec["true_esi"]),

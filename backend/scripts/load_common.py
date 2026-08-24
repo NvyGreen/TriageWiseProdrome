@@ -110,14 +110,15 @@ def fetch_queue_ids(base_url):
 
 # ---- server ---------------------------------------------------------------
 
-def start_server(port, log_path):
-    """Launch a SINGLE-worker uvicorn on the _test DB. Single worker is required:
-    the queue is per-process, so >1 worker would split it."""
+def start_server(port, log_path, workers=1):
+    """Launch uvicorn on the _test DB. The queue is persisted in triage_queue, so
+    multiple workers share it correctly (each worker has its own DB pool)."""
     child_env = {**os.environ, "DB_NAME": TEST_DB, "PYTHONPATH": str(BACKEND)}
     log_file = open(log_path, "w", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning",
+         "--workers", str(workers)],
         cwd=str(BACKEND), env=child_env, stdout=log_file, stderr=subprocess.STDOUT,
     )
     return proc, log_file

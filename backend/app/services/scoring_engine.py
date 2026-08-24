@@ -66,7 +66,7 @@ class ScoringEngine:
             self.rules.append(rule)
     
 
-    def score(self, intake: IntakeRecord, red_flag_layer: RedFlagLayer, db: Session) -> SeverityResult:
+    def score(self, intake: IntakeRecord, red_flag_layer: RedFlagLayer, db: Session) -> tuple[int, SeverityResult]:
         points = 0
         resource_level = None
         missing_fields = set()
@@ -210,6 +210,7 @@ class ScoringEngine:
                 severity.flag_tier = flag_tier
 
             db.flush()
+            severity_id = severity.severity_id if severity is not None else new_severity.severity_id
         except SQLAlchemyError as e:
             db.rollback()
             logger.exception("Patient severity creation failed")
@@ -217,7 +218,7 @@ class ScoringEngine:
 
         result.flag_tier = flag_tier
         result.red_flag_ids = red_flag_ids
-        return result
+        return severity_id, result
 
 
     def applyFallback(self, field):

@@ -35,6 +35,7 @@ from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
+from app.models.triage_queue import TriageQueue
 from app.services.priority_queue import PriorityQueue
 from app.services.scoring_engine import ScoringEngine
 from app.services.red_flag_layer import RedFlagLayer
@@ -81,9 +82,15 @@ def _seed(db_session, name, **vitals):
     db_session.flush()
     # A queued intake has been scored (submitIntake invariant); the status path
     # reads its severity back, so give it one.
-    db_session.add(
-        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
-    )
+    severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    db_session.add(severity)
+    db_session.flush()
+    # ...and a triage_queue row — updatePatient now reads/updates it.
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id,
+        severity_id=severity.severity_id, esi_band=4, flag_tier=3,
+        arrival_time=intake.created_at,
+    ))
     db_session.commit()
     return intake.intake_id
 
@@ -148,7 +155,11 @@ def test_disposition_removes_from_queue(client, db_session, queue_override):
     assert resp.status_code == 200
 
     expected = [id_map[j] for j in case["expect"]["queue_after_order"]]
-    assert queue_override.orderedIntakeIds() == expected
+    # Queue is read from the DB now; the dispositioned target is excluded by status.
+    entries = client.get("/queue/").json()["payload"]["entries"]
+    seeded = set(id_map.values())
+    got = [e["intake_id"] for e in entries if e["intake_id"] in seeded]
+    assert got == expected
     assert len(_events(db_session, target, EventType.STATUS_CHANGED)) == 1
 
 
@@ -198,7 +209,12 @@ def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
     db_session.add(intake)
     db_session.commit()
 
-    baseline = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    severity_id, baseline = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id, severity_id=severity_id,
+        esi_band=int(baseline.esi_level[-1]), flag_tier=baseline.flag_tier,
+        arrival_time=intake.created_at,
+    ))
     db_session.commit()
     assert baseline.flag_tier == 3  # normal vitals -> no flag yet
 
@@ -246,8 +262,13 @@ def test_clinical_update_refreshes_completeness(client, db_session, queue_overri
     db_session.add(intake)
     db_session.commit()
 
-    baseline = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    severity_id, baseline = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     ExplanationBuilder(db_session).build(baseline, intake)
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id, severity_id=severity_id,
+        esi_band=int(baseline.esi_level[-1]), flag_tier=baseline.flag_tier,
+        arrival_time=intake.created_at,
+    ))
     db_session.commit()
     assert baseline.data_completeness == "3 of 5"
 
@@ -301,9 +322,14 @@ def test_unscoreable_update_returns_422(client, db_session, queue_override, api_
     db_session.add(intake)
     db_session.flush()
     # An updated intake has already been scored (submitIntake invariant).
-    db_session.add(
-        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
-    )
+    severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    db_session.add(severity)
+    db_session.flush()
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id,
+        severity_id=severity.severity_id, esi_band=4, flag_tier=3,
+        arrival_time=intake.created_at,
+    ))
     db_session.commit()
 
     db_session.execute(
@@ -337,9 +363,14 @@ def test_clinical_update_partial_only_changes_sent_fields(client, db_session, qu
     db_session.add(intake)
     db_session.flush()
     # An updated intake has already been scored (submitIntake invariant).
-    db_session.add(
-        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
-    )
+    severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    db_session.add(severity)
+    db_session.flush()
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id,
+        severity_id=severity.severity_id, esi_band=4, flag_tier=3,
+        arrival_time=intake.created_at,
+    ))
     db_session.commit()
     intake_id = intake.intake_id
 
@@ -379,13 +410,38 @@ def test_clinical_update_raises_esi(client, db_session, queue_override):
     db_session.commit()
     target_id = target.intake_id
 
-    baseline = ScoringEngine(db_session).score(target, RedFlagLayer(db_session), db_session)
+    severity_id, baseline = ScoringEngine(db_session).score(target, RedFlagLayer(db_session), db_session)
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=target.intake_id, severity_id=severity_id,
+        esi_band=int(baseline.esi_level[-1]), flag_tier=baseline.flag_tier,
+        arrival_time=target.created_at,
+    ))
     db_session.commit()
 
-    # A higher-priority filler sits above the target so it has room to move up.
-    queue_override.insert(2, 3, _at("09:00"), 88_888)     # filler, ESI-2
-    queue_override.insert(4, 3, _at("10:00"), target_id)  # target, ESI-4
-    position_before = queue_override.getIntakePosition(target_id)
+    # A higher-priority filler sits above the target in the DB queue so it has
+    # room to move up.
+    filler_patient = Patient(name="Filler Above", date_of_birth=date(1980, 1, 1), sex="M")
+    db_session.add(filler_patient)
+    db_session.flush()
+    filler_intake = IntakeRecord(patient_id=filler_patient.patient_id, chief_complaint="cardiac")
+    db_session.add(filler_intake)
+    db_session.flush()
+    filler_sev = PatientSeverity(
+        intake_id=filler_intake.intake_id, severity_score=6, system_ESI="ESI-2", flag_tier=3,
+    )
+    db_session.add(filler_sev)
+    db_session.flush()
+    db_session.add(TriageQueue(
+        patient_id=filler_patient.patient_id, intake_id=filler_intake.intake_id,
+        severity_id=filler_sev.severity_id, esi_band=2, flag_tier=3, arrival_time=_at("09:00"),
+    ))
+    db_session.commit()
+
+    def _queue_pos(iid):
+        entries = client.get("/queue/").json()["payload"]["entries"]
+        return next(e["position"] for e in entries if e["intake_id"] == iid)
+
+    position_before = _queue_pos(target_id)
 
     # HR 138 (+3) + SpO2 89 (+4) -> ESI-1.
     resp = client.patch(f"/intakes/{target_id}", json={"heart_rate": 138, "oxygen_saturation": 89})
@@ -400,7 +456,7 @@ def test_clinical_update_raises_esi(client, db_session, queue_override):
     # rescored + esi_band rose (more severe == lower number).
     assert int(latest.system_ESI[-1]) < int(baseline.esi_level[-1])
     # queue_moved_up.
-    assert queue_override.getIntakePosition(target_id) < position_before
+    assert _queue_pos(target_id) < position_before
     # case_update_written + both events.
     assert _case_updates(db_session, target_id)
     assert len(_events(db_session, target_id, EventType.CASE_UPDATED)) == 1

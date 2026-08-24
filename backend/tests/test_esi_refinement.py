@@ -45,7 +45,7 @@ def _seed_intake(db_session, intake_fields):
 @pytest.mark.parametrize("case", STANDARD, ids=lambda c: c["_name"])
 def test_refinement(case, db_session):
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    _, result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]

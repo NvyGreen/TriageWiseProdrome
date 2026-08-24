@@ -22,6 +22,7 @@ from app.models.intake_record import IntakeRecord
 from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
+from app.models.triage_queue import TriageQueue
 from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import (
     EventType,
@@ -75,11 +76,48 @@ def _seed(db_session, seed):
     return intake, severity
 
 
-def _seed_queue(queue, queue_seed, target_json_id, target_real_id):
-    """Insert each queue entry; the target uses its real id, fillers their literal id."""
+def _seed_queue(db_session, queue, queue_seed, target_json_id, target_intake, target_severity):
+    """Insert each queue entry into BOTH the in-memory heap and triage_queue.
+
+    The target reuses its seeded rows; fillers get a minimal patient/intake/
+    severity chain so they exist in the DB — applyOverride now reads positions
+    from triage_queue, so the fillers can't live only in the heap.
+
+    The _test DB accumulates triage_queue rows across tests, so clear the table
+    first: position math counts the whole table, and cases like "alone in the
+    queue" are only true against an isolated queue.
+    """
+    db_session.query(TriageQueue).delete()
+    db_session.flush()
     for entry in queue_seed:
-        real = target_real_id if entry["intake_id"] == target_json_id else entry["intake_id"]
-        queue.insert(int(entry["esi"][-1]), entry["flag_tier"], _at(ARRIVAL[entry["arrival"]]), real)
+        band = int(entry["esi"][-1])
+        arrival = _at(ARRIVAL[entry["arrival"]])
+        if entry["intake_id"] == target_json_id:
+            patient_id, intake_id, severity_id = (
+                target_intake.patient_id, target_intake.intake_id, target_severity.severity_id
+            )
+        else:
+            patient = Patient(name="Filler", date_of_birth=date(1980, 1, 1), sex="M")
+            db_session.add(patient)
+            db_session.flush()
+            fill_intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint="cardiac")
+            db_session.add(fill_intake)
+            db_session.flush()
+            fill_sev = PatientSeverity(
+                intake_id=fill_intake.intake_id, severity_score=1,
+                system_ESI=entry["esi"], flag_tier=entry["flag_tier"],
+            )
+            db_session.add(fill_sev)
+            db_session.flush()
+            patient_id, intake_id, severity_id = (
+                patient.patient_id, fill_intake.intake_id, fill_sev.severity_id
+            )
+        queue.insert(band, entry["flag_tier"], arrival, intake_id)
+        db_session.add(TriageQueue(
+            patient_id=patient_id, intake_id=intake_id, severity_id=severity_id,
+            esi_band=band, flag_tier=entry["flag_tier"], arrival_time=arrival,
+        ))
+    db_session.commit()
 
 
 def _events(db_session, intake_id, event_type):
@@ -97,7 +135,7 @@ def test_apply_override(case, db_session):
     intake, severity = _seed(db_session, seed)
 
     queue = PriorityQueue()
-    _seed_queue(queue, seed["queue_seed"], seed["intake_record"]["intake_id"], intake.intake_id)
+    _seed_queue(db_session, queue, seed["queue_seed"], seed["intake_record"]["intake_id"], intake, severity)
 
     call = case["call"]
     result = TriageService(db_session).applyOverride(
@@ -105,7 +143,6 @@ def test_apply_override(case, db_session):
         call["clinician_esi"],
         ReasonCode(call["reason_code"]),
         call["note"],
-        queue,
     )
     db_session.commit()
 
@@ -162,7 +199,6 @@ def test_severity_not_found_raises(db_session):
             call["clinician_esi"],
             ReasonCode(call["reason_code"]),
             call["note"],
-            PriorityQueue(),
         )
 
     # Nothing written: no override row for the unknown severity id.

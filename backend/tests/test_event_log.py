@@ -31,6 +31,7 @@ from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
+from app.models.triage_queue import TriageQueue
 from app.services.priority_queue import PriorityQueue
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
@@ -81,9 +82,15 @@ def _seed_queued(db_session, queue, chief_complaint, esi_band, arrival, **vitals
     intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint=chief_complaint, **vitals)
     db_session.add(intake)
     db_session.flush()
-    db_session.add(
-        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI=f"ESI-{esi_band}")
-    )
+    severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI=f"ESI-{esi_band}")
+    db_session.add(severity)
+    db_session.flush()
+    # A queued intake also has a triage_queue row — updatePatient reads/updates it.
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id,
+        severity_id=severity.severity_id, esi_band=esi_band, flag_tier=3,
+        arrival_time=arrival,
+    ))
     db_session.commit()
     queue.insert(esi_band, 3, arrival, intake.intake_id)
     return intake.intake_id
@@ -163,8 +170,10 @@ def test_clinical_update_logs_events(client, db_session, event_queue):
     assert resp.status_code == 200
 
     assert _types(_rows(db_session, target)) == _expected_types(case)
-    # reprioritized fired because the target actually crossed the filler.
-    assert event_queue.orderedIntakeIds() == [target, filler]
+    # reprioritized fired because the target crossed the filler in the persisted queue.
+    entries = client.get("/queue/").json()["payload"]["entries"]
+    got = [e["intake_id"] for e in entries if e["intake_id"] in {target, filler}]
+    assert got == [target, filler]
 
 
 def test_status_only_update_logs_status_changed(client, db_session, event_queue):

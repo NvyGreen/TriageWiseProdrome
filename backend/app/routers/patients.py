@@ -31,7 +31,6 @@ def test_patients():
 def record_intake(
     record: IntakeCreate,
     db: Session = Depends(get_db),
-    queue: PriorityQueue = Depends(get_queue),
     # max_length matches idempotency_key's String(64) column, so an overlong key
     # is a 400 from the validation handler instead of a DataError at commit.
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=64),
@@ -45,7 +44,7 @@ def record_intake(
         # response class (all stored responses are 201 successes).
         return existing.response_body
     
-    result = triageService.submitIntake(record, queue)
+    result = triageService.submitIntake(record)
     response_body = {
         "message": "Intake recorded successfully",
         "intake_id": result.intake_id,
@@ -57,17 +56,17 @@ def record_intake(
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
-        try:
-            queue.remove(result.intake_id)
-        except ValueError:
-            pass
+        # try:
+        #     queue.remove(result.intake_id)
+        # except ValueError:
+        #     pass
         logger.exception("Intake commit failed")
         raise HTTPException(status_code=500) from e
-    except HTTPException as e:
-        try:
-            queue.remove(result.intake_id)
-        except ValueError:
-            pass
-        raise HTTPException(status_code=500) from e
+    # except HTTPException as e:
+    #     try:
+    #         queue.remove(result.intake_id)
+    #     except ValueError:
+    #         pass
+    #     raise HTTPException(status_code=500) from e
 
     return response_body

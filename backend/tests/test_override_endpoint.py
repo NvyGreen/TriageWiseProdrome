@@ -35,6 +35,7 @@ from app.models.intake_record import IntakeRecord
 from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
+from app.models.triage_queue import TriageQueue
 from app.schemas.override_create import OverrideCreate
 from app.services.idempotency import hash_payload
 from app.services.priority_queue import PriorityQueue
@@ -150,7 +151,17 @@ def test_override_endpoint(case, client, db_session, override_queue):
         _seed_idempotency(db_session, idem_row, send_key, body)
 
     for entry in (seed.get("queue_seed", []) if seed else []):
-        override_queue.insert(int(entry["esi"][-1]), entry["flag_tier"], _at("10:00"), real_intake_id)
+        band = int(entry["esi"][-1])
+        override_queue.insert(band, entry["flag_tier"], _at("10:00"), real_intake_id)
+        # applyOverride reads the queue row from triage_queue; commit it so the
+        # endpoint's own session sees it.
+        db_session.add(TriageQueue(
+            patient_id=intake.patient_id, intake_id=real_intake_id,
+            severity_id=real_sev_id, esi_band=band, flag_tier=entry["flag_tier"],
+            arrival_time=_at("10:00"),
+        ))
+    if seed and seed.get("queue_seed"):
+        db_session.commit()
 
     headers = {"Idempotency-Key": send_key} if send_key else {}
     resp = client.post("/overrides/", json=body, headers=headers)

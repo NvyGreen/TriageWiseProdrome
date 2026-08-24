@@ -41,7 +41,18 @@ import load_common as lc  # noqa: E402
 PORT = 8097
 BASE_URL = f"http://127.0.0.1:{PORT}"
 SERVER_LOG = Path(tempfile.gettempdir()) / "queue_stress_server.log"
-SUMMARY_PATH = lc.BACKEND.parent / "docs" / "validation" / "queue_stress.md"
+
+
+@events.init_command_line_parser.add_listener
+def _add_args(parser):
+    parser.add_argument(
+        "--label", type=str, default="",
+        help="suffix for the summary file: docs/validation/queue_stress_<label>.md",
+    )
+    parser.add_argument(
+        "--workers", type=int, default=1,
+        help="uvicorn worker processes for the server under test",
+    )
 
 # gevent runs one OS thread cooperatively, so a plain counter/list are safe here.
 _counter = itertools.count()
@@ -71,7 +82,8 @@ class QueueUser(HttpUser):
 
 @events.test_start.add_listener
 def _on_start(environment, **_kw):
-    proc, log_file = lc.start_server(PORT, SERVER_LOG)
+    workers = getattr(environment.parsed_options, "workers", 1) or 1
+    proc, log_file = lc.start_server(PORT, SERVER_LOG, workers=workers)
     _server["proc"], _server["log"] = proc, log_file
     lc.wait_until_up(BASE_URL)
 
@@ -108,19 +120,22 @@ def _on_stop(environment, **_kw):
 
         total = environment.stats.total
         opts = environment.parsed_options
+        label = getattr(opts, "label", "") or ""
+        workers = getattr(opts, "workers", 1) or 1
         run_time = getattr(opts, "run_time", None)
         rps = (total.num_requests / run_time) if run_time else None
         p95 = total.get_response_time_percentile(0.95)
 
         lines = [
-            "# Queue Stress — Sustained Load (build order 62)",
+            f"# Queue Stress — Sustained Load (build order 62){f' [{label}]' if label else ''}",
             "",
-            f"Sustained concurrent `POST /patients` (Locust) against a single-worker "
-            f"uvicorn on the `{lc.TEST_DB}` DB. Queue order checked against a "
-            f"DB-derived expected order (sort key: esi_band, flag_tier, arrival, intake_id).",
+            f"Sustained concurrent `POST /patients` (Locust) against a "
+            f"{workers}-worker uvicorn on the `{lc.TEST_DB}` DB. Queue order checked "
+            f"against a DB-derived expected order (sort key: esi_band, flag_tier, arrival, intake_id).",
             "",
             "## Load",
             "",
+            f"- Workers: **{workers}**",
             f"- Users / spawn rate / duration: **{opts.num_users} / {opts.spawn_rate}/s / {run_time}s**",
             f"- Requests: {total.num_requests}  (failures: {total.num_failures})",
             f"- Throughput: {rps:.1f} req/s" if rps else "- Throughput: n/a",
@@ -148,10 +163,12 @@ def _on_stop(environment, **_kw):
             f"- Added ~{result['submitted']} rows to the disposable `{lc.TEST_DB}` DB.",
             "",
         ]
-        SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        SUMMARY_PATH.write_text("\n".join(lines), encoding="utf-8")
+        suffix = f"_{label}" if label else ""
+        summary_path = lc.BACKEND.parent / "docs" / "validation" / f"queue_stress{suffix}.md"
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text("\n".join(lines), encoding="utf-8")
         print("\n" + "\n".join(lines))
-        print(f"Summary written to {SUMMARY_PATH}")
+        print(f"Summary written to {summary_path}")
 
         if not result["ok"]:
             print(f"\nFAIL details: lost={result['lost'][:10]} "

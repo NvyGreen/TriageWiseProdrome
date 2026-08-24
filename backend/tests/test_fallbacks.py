@@ -52,7 +52,7 @@ def _fallbacks_to_dict(entries):
 @pytest.mark.parametrize("case", STANDARD, ids=lambda c: c["_name"])
 def test_fallback_signals(case, db_session):
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    _, result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]
@@ -73,7 +73,7 @@ def test_fallback_persisted_on_severity_row(db_session):
     """A fired fallback must be written to patient_severity (non-empty) with LOW confidence."""
     case = BY_NAME["fallback_used_flag_set_on_persist"]
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    _, result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]

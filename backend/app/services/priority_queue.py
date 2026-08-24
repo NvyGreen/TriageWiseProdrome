@@ -95,13 +95,15 @@ class PriorityQueue:
 
 
     def getIntakePosition(self, intake_id: int) -> int:
+        # Position = 1 + the number of entries that rank strictly ahead. A direct
+        # O(n) count over the heap, instead of copying + draining the whole heap
+        # into sorted order (O(n log n)) on every insert/update. SortKey is a
+        # total order (unique intake_id tiebreak), so this equals the sorted rank.
         with self._lock:
-            intake_ids = self.orderedIntakeIds()
-        for i in range(len(intake_ids)):
-            if intake_ids[i] == intake_id:
-                return i + 1
-
-        raise ValueError(f"{intake_id} not in queue")
+            target = next((row for row in self.heap if row.intake_id == intake_id), None)
+            if target is None:
+                raise ValueError(f"{intake_id} not in queue")
+            return 1 + sum(1 for row in self.heap if row < target)
 
 
     def _sift_up(self, i):

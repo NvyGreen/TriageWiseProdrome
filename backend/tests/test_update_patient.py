@@ -25,6 +25,7 @@ from app.models.event_log import EventLog
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
+from app.models.triage_queue import TriageQueue
 from app.schemas.intake_update import IntakeUpdate, Status
 from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import EventType, TriageService, IntakeNotFoundError
@@ -56,9 +57,15 @@ def _seed(db_session, name="Update Patient", **vitals):
     db_session.flush()
     # A queued intake has been scored (submitIntake invariant); the status path
     # reads its severity back, so give it one.
-    db_session.add(
-        PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
-    )
+    severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
+    db_session.add(severity)
+    db_session.flush()
+    # ...and a triage_queue row — updatePatient now reads/updates it.
+    db_session.add(TriageQueue(
+        patient_id=patient.patient_id, intake_id=intake.intake_id,
+        severity_id=severity.severity_id, esi_band=4, flag_tier=3,
+        arrival_time=intake.created_at,
+    ))
     db_session.commit()
     return patient.patient_id, intake.intake_id
 
@@ -83,7 +90,7 @@ def test_partial_update_changes_only_sent_fields(db_session, queue):
     # Clinical update re-queues, so the intake must already be in the queue.
     queue.insert(3, 3, _at("10:00"), intake_id)
 
-    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8), queue)
+    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8))
     db_session.commit()
 
     intake = db_session.get(IntakeRecord, intake_id)
@@ -98,7 +105,7 @@ def test_case_update_records_only_sent_vitals(db_session, queue):
     )
     queue.insert(3, 3, _at("10:00"), intake_id)
 
-    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8), queue)
+    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(pain_level=8))
     db_session.commit()
 
     rows = _case_updates(db_session, intake_id)
@@ -111,7 +118,7 @@ def test_clinical_update_fires_case_updated_event(db_session, queue):
     _, intake_id = _seed(db_session, "Event Patient", heart_rate=100)
     queue.insert(3, 3, _at("10:00"), intake_id)
 
-    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(heart_rate=120), queue)
+    TriageService(db_session).updatePatient(intake_id, IntakeUpdate(heart_rate=120))
     db_session.commit()
 
     assert len(_events(db_session, intake_id, EventType.CASE_UPDATED)) == 1
@@ -136,7 +143,7 @@ def test_unchanged_values_write_nothing(db_session, queue):
     queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(
-        intake_id, IntakeUpdate(heart_rate=100, pain_level=4), queue
+        intake_id, IntakeUpdate(heart_rate=100, pain_level=4)
     )
     db_session.commit()
 
@@ -144,22 +151,20 @@ def test_unchanged_values_write_nothing(db_session, queue):
     assert _events(db_session, intake_id, EventType.CASE_UPDATED) == []
 
 
-def test_disposition_removes_from_queue(db_session, queue):
+def test_disposition_removes_from_queue(db_session):
     _, first = _seed(db_session, "Stays First")
     _, target = _seed(db_session, "Gets Dispositioned")
     _, last = _seed(db_session, "Stays Last")
 
-    queue.insert(1, 3, _at("10:00"), first)
-    queue.insert(2, 3, _at("10:01"), target)
-    queue.insert(3, 3, _at("10:02"), last)
-
     TriageService(db_session).updatePatient(
-        target, IntakeUpdate(status=Status.DISPOSITIONED), queue
+        target, IntakeUpdate(status=Status.DISPOSITIONED)
     )
     db_session.commit()
 
-    # Target gone; the others keep their relative order.
-    assert queue.orderedIntakeIds() == [first, last]
+    # Target excluded from the queue (status DISPOSITIONED); others remain, in order.
+    entries = TriageService(db_session).getQueue()
+    ids = [e.intake_id for e in entries if e.intake_id in {first, target, last}]
+    assert ids == [first, last]
 
 
 def test_status_change_fires_status_changed_event(db_session, queue):
@@ -167,7 +172,7 @@ def test_status_change_fires_status_changed_event(db_session, queue):
     queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(
-        intake_id, IntakeUpdate(status=Status.IN_ROOM), queue
+        intake_id, IntakeUpdate(status=Status.IN_ROOM)
     )
     db_session.commit()
 
@@ -176,19 +181,19 @@ def test_status_change_fires_status_changed_event(db_session, queue):
     assert _case_updates(db_session, intake_id) == []
 
 
-def test_unknown_intake_clinical_path_raises_404(db_session, queue):
+def test_unknown_intake_clinical_path_raises_404(db_session):
     with pytest.raises(IntakeNotFoundError) as e:
         TriageService(db_session).updatePatient(
-            999_999_999, IntakeUpdate(pain_level=5), queue
+            999_999_999, IntakeUpdate(pain_level=5)
         )
     assert e.value.intake_id == 999_999_999
 
 
-def test_unknown_intake_status_path_raises_404(db_session, queue):
+def test_unknown_intake_status_path_raises_404(db_session):
     """The status path has its own lookup, so it needs its own 404 test."""
     with pytest.raises(IntakeNotFoundError) as e:
         TriageService(db_session).updatePatient(
-            999_999_999, IntakeUpdate(status=Status.IN_ROOM), queue
+            999_999_999, IntakeUpdate(status=Status.IN_ROOM)
         )
     assert e.value.intake_id == 999_999_999
 
@@ -215,7 +220,7 @@ def test_merged_diastolic_ge_systolic_raises(db_session, queue):
 
     with pytest.raises(RequestValidationError):
         TriageService(db_session).updatePatient(
-            intake_id, IntakeUpdate(blood_pressure_diastolic=200), queue
+            intake_id, IntakeUpdate(blood_pressure_diastolic=200)
         )
 
 
@@ -226,7 +231,7 @@ def test_decimal_vital_old_value_is_floated(db_session, queue):
     queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).updatePatient(
-        intake_id, IntakeUpdate(temperature=99.5), queue
+        intake_id, IntakeUpdate(temperature=99.5)
     )
     db_session.commit()
 

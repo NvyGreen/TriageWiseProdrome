@@ -68,7 +68,7 @@ def _expected_esi(case):
 @pytest.mark.parametrize("case", STANDARD, ids=lambda c: c["_name"])
 def test_score_and_band(case, db_session):
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    _, result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]
@@ -91,7 +91,7 @@ def test_inactive_rule_is_skipped(db_session):
     try:
         engine = ScoringEngine(db_session)  # snapshot excludes the disabled rule
         intake = _seed_intake(db_session, case["intake"])
-        result = engine.score(intake, RedFlagLayer(db_session), db_session)
+        _, result = engine.score(intake, RedFlagLayer(db_session), db_session)
         db_session.commit()
 
         expect = case["expect"]
@@ -111,9 +111,9 @@ def test_determinism_same_input_same_score(db_session):
     intake = _seed_intake(db_session, case["intake"])
     engine = ScoringEngine(db_session)
 
-    first = engine.score(intake, RedFlagLayer(db_session), db_session)
+    _, first = engine.score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
-    second = engine.score(intake, RedFlagLayer(db_session), db_session)
+    _, second = engine.score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     assert first.severity_score == second.severity_score
@@ -130,7 +130,7 @@ def test_drivers_trace_to_fired_rules_only(db_session):
     """One driver per fired rule, each carrying the patient's actual value."""
     case = BY_NAME["drivers_trace_to_fired_rules_only"]
     intake = _seed_intake(db_session, case["intake"])
-    result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
+    _, result = ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
     db_session.commit()
 
     expect = case["expect"]

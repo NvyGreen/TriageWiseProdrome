@@ -109,6 +109,17 @@ def test_submit_logs_expected_events(client, db_session, event_queue, name):
     assert resp.status_code == 201
     intake_id = resp.json()["payload"]["intake_id"]
 
+    # Scoring is out-of-band now (separate process); drive it so the score/queued
+    # (and red-flag) events are written, the same path the poll loop uses.
+    from app.dependencies import SessionLocal
+    from app import scorer
+    session = SessionLocal()
+    try:
+        scorer.score_claimed(session, intake_id)
+    finally:
+        session.close()
+    db_session.expire_all()
+
     rows = _rows(db_session, intake_id)
     assert _types(rows) == _expected_types(case)  # exactly these — no extras
     for r in rows:
@@ -117,7 +128,8 @@ def test_submit_logs_expected_events(client, db_session, event_queue, name):
 
 
 def test_unscoreable_submit_logs_nothing(client, db_session, event_queue):
-    """422 rolls the whole transaction back -> event_log gains no rows."""
+    """An unscoreable submit is accepted (201, pending); out-of-band scoring rolls
+    back, so no score_calculated / queued events are written (only intake_created)."""
     case = BY_NAME["unscoreable_submit_does_not_log_scored_or_queued"]
     (rule_id,) = case["action"]["setup"]["deactivate_rules"]
 
@@ -126,11 +138,13 @@ def test_unscoreable_submit_logs_nothing(client, db_session, event_queue):
     )
     db_session.commit()
     try:
-        before = db_session.query(EventLog).count()
         resp = _submit(client, case)
-        assert resp.status_code == 422
-        assert resp.json()["error"]["code"] == "unscoreable"
-        assert db_session.query(EventLog).count() == before
+        assert resp.status_code == 201
+        intake_id = resp.json()["payload"]["intake_id"]
+        db_session.expire_all()  # see the background task's committed writes
+        types = _types(_rows(db_session, intake_id))
+        assert "score_calculated" not in types
+        assert "queued" not in types
     finally:
         db_session.execute(
             update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=True)

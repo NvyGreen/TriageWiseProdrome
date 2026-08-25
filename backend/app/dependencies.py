@@ -4,7 +4,7 @@ from app.config import get_settings
 from app.services.priority_queue import PriorityQueue
 
 DATABASE_URL = get_settings().DATABASE_URL
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=10)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 queue = PriorityQueue()

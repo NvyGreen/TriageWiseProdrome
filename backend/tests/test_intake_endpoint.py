@@ -490,6 +490,7 @@ def _seed_detail(db_session, seed):
         chief_complaint=ir["chief_complaint"],
         missing_fields=ir["missing_fields"],
         pregnancy_status="none",  # IntakeInfo.pregnancy_status is a required enum
+        scoring_status="scored",  # a seeded detail row represents a scored intake
     )
     db_session.add(intake)
     db_session.flush()
@@ -596,3 +597,30 @@ def test_patient_detail_endpoint(case, client, db_session):
         assert len(viewed) == 1
     if expect.get("no_event_logged"):
         assert len(viewed) == 0
+
+
+def _seed_unscored_intake(db_session, scoring_status):
+    """A bare intake in a non-scored state (no severity/explanation)."""
+    patient = Patient(name="Pending Patient", date_of_birth=date(1980, 1, 1), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    intake = IntakeRecord(
+        patient_id=patient.patient_id, chief_complaint="cardiac",
+        scoring_status=scoring_status,
+    )
+    db_session.add(intake)
+    db_session.commit()
+    return intake.intake_id
+
+
+@pytest.mark.parametrize("scoring_status", ["pending", "unscoreable", "failed"])
+def test_detail_non_scored_returns_status(client, db_session, scoring_status):
+    """A non-SCORED intake has no severity/explanation to render, so the detail
+    endpoint returns {intake_id, status} (200) instead of 500, and logs no
+    explanation_viewed event."""
+    intake_id = _seed_unscored_intake(db_session, scoring_status)
+
+    resp = client.get(f"/intakes/{intake_id}?mode=xai")
+    assert resp.status_code == 200
+    assert resp.json()["payload"] == {"intake_id": intake_id, "status": scoring_status}
+    assert _events(db_session, intake_id, EventType.EXPLANATION_VIEWED) == []

@@ -60,6 +60,16 @@ def test_post_patient_appears_in_queue(client, shared_queue, api_examples):
     resp = client.post("/patients/", json=body, headers={"Idempotency-Key": uuid4().hex})
     assert resp.status_code == 201
 
+    # Scoring is out-of-band (separate scorer process); drive it so the intake gets
+    # scored + queued before we read the queue.
+    from app.dependencies import SessionLocal
+    from app import scorer
+    session = SessionLocal()
+    try:
+        scorer.score_claimed(session, resp.json()["payload"]["intake_id"])
+    finally:
+        session.close()
+
     entries = client.get("/queue/").json()["payload"]["entries"]
     match = [e for e in entries if e["name"] == body["name"]]
     assert len(match) == 1

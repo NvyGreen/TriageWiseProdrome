@@ -38,6 +38,14 @@ const COMPLAINT_LABELS = {
 
 const SEX_LABELS = { F: "Female", M: "Male", other: "Other", unknown: "Unknown" };
 
+// Anything other than "scored" comes back as {intake_id, status}. updatePatient
+// needs a severity and a queue row, so editing an unscored intake would 500.
+const NOT_SCORED_TEXT = {
+    pending: "This patient hasn't been scored yet. Vitals can be edited once scoring finishes.",
+    unscoreable: "This intake could not be scored, so its vitals can't be recomputed here.",
+    failed: "Scoring failed for this intake, so its vitals can't be recomputed here."
+};
+
 const EM_DASH = "—";
 
 
@@ -179,6 +187,7 @@ function EditPatient() {
     const [values, setValues] = useState({});
     const [loadError, setLoadError] = useState(null);
     const [notFound, setNotFound] = useState(false);
+    const [scoringStatus, setScoringStatus] = useState(null);
 
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(null);
@@ -212,6 +221,12 @@ function EditPatient() {
                 }
 
                 const payload = data?.payload ?? null;
+
+                // Short-circuited response: no intake block to seed the form from.
+                if (payload && payload.status && !payload.system_esi) {
+                    setScoringStatus(payload.status);
+                    return;
+                }
 
                 setBaseline(payload);
                 setValues(seedValues(payload.intake));
@@ -250,6 +265,20 @@ function EditPatient() {
             return next;
         });
     };
+
+    if (scoringStatus) {
+        return (
+            <div className='edit'>
+                <h1 className='h1'>Edit Patient</h1>
+                <div className='panel emptystate'>
+                    <p>{NOT_SCORED_TEXT[scoringStatus] ?? `Intake status: ${scoringStatus}.`}</p>
+                    <Link className='backbtn' to={`/intakes/${intakeId}`}>
+                        ← Back to Patient Detail
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
     if (notFound) {
         return (

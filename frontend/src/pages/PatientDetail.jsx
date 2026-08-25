@@ -31,6 +31,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const BLACKBOX = "blackbox";
 const XAI = "xai";
 
+// scoring_status values from ScoringStatus in triage_service.py. Anything other
+// than "scored" comes back as {intake_id, status} instead of a full payload.
+const PENDING = "pending";
+const TERMINAL_STATUS_TEXT = {
+    unscoreable: "This intake is valid, but it could not be scored. Review it manually.",
+    failed: "Scoring failed for this intake. It may need to be resubmitted."
+};
+
+// The scorer is a separate process, so the wait is unbounded in principle.
+// Poll briefly, then hand over to a manual refresh rather than spinning forever.
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 120000;
+
 const VITAL_ROWS = [
     { label: "Heart Rate", field: "heart_rate", unit: "bpm" },
     {
@@ -352,6 +365,10 @@ function PatientDetail() {
     const [error, setError] = useState(null);
     const [notFound, setNotFound] = useState(false);
 
+    // Set when the API returns {intake_id, status} rather than a scored payload.
+    const [scoringStatus, setScoringStatus] = useState(null);
+    const [pollTimedOut, setPollTimedOut] = useState(false);
+
     const [overrideBand, setOverrideBand] = useState("");
     const [overrideReason, setOverrideReason] = useState("");
     const [overrideNote, setOverrideNote] = useState("");
@@ -401,8 +418,19 @@ function PatientDetail() {
                     return;
                 }
 
+                const payload = data?.payload ?? null;
+
+                // Not scored yet: the router short-circuits to {intake_id,
+                // status} long before there is anything to render.
+                if (payload && payload.status && !payload.system_esi) {
+                    setNotFound(false);
+                    setScoringStatus(payload.status);
+                    return;
+                }
+
                 setNotFound(false);
-                setDetail(data?.payload ?? null);
+                setScoringStatus(null);
+                setDetail(payload);
                 setLoadedMode(mode);
             } catch (fetchError) {
                 if (fetchError.name === "AbortError") {
@@ -423,6 +451,33 @@ function PatientDetail() {
 
         return () => controller.abort();
     }, [intakeId, mode, loadedMode]);
+
+    // While the scorer has not claimed the intake, re-ask on an interval.
+    // Clearing loadedMode is what re-triggers the load effect above.
+    useEffect(() => {
+        if (scoringStatus !== PENDING || pollTimedOut) {
+            return undefined;
+        }
+
+        const startedAt = Date.now();
+
+        const timer = setInterval(() => {
+            if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
+                setPollTimedOut(true);
+                return;
+            }
+
+            setLoadedMode(null);
+        }, POLL_INTERVAL_MS);
+
+        return () => clearInterval(timer);
+    }, [scoringStatus, pollTimedOut]);
+
+    const checkAgain = () => {
+        setPollTimedOut(false);
+        setScoringStatus(null);
+        setLoadedMode(null);
+    };
 
     const handleOverrideSubmit = async () => {
         if (submitting || !overrideBand || !overrideReason) {
@@ -477,6 +532,48 @@ function PatientDetail() {
             setSubmitting(false);
         }
     };
+
+    // Not scored yet, or terminally unscoreable: there is no severity or
+    // explanation to render, so the page reports the state instead.
+    if (scoringStatus) {
+        const terminal = TERMINAL_STATUS_TEXT[scoringStatus];
+
+        return (
+            <div className='detail'>
+                <div className='crumb'>
+                    <Link to='/queue'>Triage Queue</Link> › <b>Patient Detail</b>
+                </div>
+                <h1 className='h1'>Patient Detail</h1>
+
+                <div className='panel emptystate'>
+                    {terminal ? (
+                        <>
+                            <p className='loaderror'>{terminal}</p>
+                            <p className='statusnote'>Intake {intakeId} · {scoringStatus}</p>
+                        </>
+                    ) : (
+                        <>
+                            <p>Scoring in progress…</p>
+                            <p className='statusnote'>
+                                Intake {intakeId} is queued for scoring. This page
+                                updates itself when the score lands.
+                                {pollTimedOut && ' Still waiting — check again below.'}
+                            </p>
+                        </>
+                    )}
+
+                    <div className='statusactions'>
+                        {(terminal || pollTimedOut) && (
+                            <button type='button' className='backbtn' onClick={checkAgain}>
+                                Check again
+                            </button>
+                        )}
+                        <Link className='backbtn' to='/queue'>← Back to Queue</Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (notFound) {
         return (

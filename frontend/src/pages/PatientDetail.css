@@ -1120,6 +1120,23 @@
   font-weight: 600;
 }
 
+.detail .statusnote {
+  max-width: 460px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--slate);
+}
+
+.detail .statusactions {
+  display: flex;
+  gap: 10px;
+}
+
+.detail button.backbtn {
+  font-family: inherit;
+  cursor: pointer;
+}
+
 .detail button.backbtn {
   font-family: inherit;
   cursor: pointer;

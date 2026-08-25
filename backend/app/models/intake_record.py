@@ -17,6 +17,7 @@ class IntakeRecord(Base):
     pain_level = Column(Integer)
     blood_sugar = Column(Numeric(precision=5, scale=1))
     missing_fields = Column(JSONB, server_default="[]")
+    scoring_status = Column(String(20), nullable=False, server_default="pending")
     source = Column(String(10), nullable=False, server_default="form")
     external_patient_id = Column(String(64))
     actual_outcome = Column(String(20))

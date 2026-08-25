@@ -29,7 +29,7 @@ from sqlalchemy import select
 
 from app.schemas.intake_create import IntakeCreate
 from app.models.patient_severity import PatientSeverity
-from app.services.priority_queue import PriorityQueue
+from app.models.triage_queue import TriageQueue
 from app.services.triage_service import TriageService
 from app.utils.enums import ReasonCode
 
@@ -61,6 +61,10 @@ def _build_intake(case: dict) -> IntakeCreate:
 def test_clinician_override_ranking(db_session):
     service = TriageService(db_session)
 
+    # Isolate the persisted queue — getQueue reads the whole triage_queue table.
+    db_session.query(TriageQueue).delete()
+    db_session.commit()
+
     clinician_esi = {}   # case_id -> clinician ESI label
     intake_id_of = {}    # case_id -> real intake_id
 
@@ -68,10 +72,13 @@ def test_clinician_override_ranking(db_session):
         cid = case["case_id"]
         clinician_esi[cid] = case["clinician_esi"]
 
-        result = service.submitIntake(_build_intake(case))
+        intake_id = service.submitIntake(_build_intake(case))["intake_id"]
+        # Scoring is out-of-band; at the service level nothing schedules it, so run
+        # it directly to produce the severity + queue row.
+        service.scoreIntake(intake_id)
 
         severity = db_session.scalar(
-            select(PatientSeverity).where(PatientSeverity.intake_id == result.intake_id)
+            select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
         )
         # Override only where the engine disagrees with the clinician label.
         if severity.system_ESI != case["clinician_esi"]:
@@ -79,7 +86,7 @@ def test_clinician_override_ranking(db_session):
                 severity.severity_id, case["clinician_esi"], ReasonCode.OTHER, None
             )
 
-        intake_id_of[cid] = result.intake_id
+        intake_id_of[cid] = intake_id
 
     # Position of each case in the finished queue.
     entries = service.getQueue()

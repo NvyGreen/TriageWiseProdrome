@@ -2,7 +2,7 @@ import logging
 from enum import StrEnum
 from decimal import Decimal
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -65,6 +65,13 @@ class EventType(StrEnum):
     EXPLANATION_VIEWED = "explanation_viewed"
 
 
+class ScoringStatus(StrEnum):
+    PENDING = "pending"
+    SCORED = "scored"
+    UNSCOREABLE = "unscoreable"
+    FAILED = "failed"
+
+
 class IntakeNotFoundError(Exception):
     def __init__(self, intake_id: int):
         self.intake_id = intake_id
@@ -106,7 +113,10 @@ class TriageService:
         )
         return ahead + 1
 
-    def submitIntake(self, intake: IntakeCreate) -> Result:
+    def submitIntake(self, intake: IntakeCreate) -> dict:
+        """Fast path: persist the patient + intake as `pending` and return
+        {intake_id, status}. Scoring, red flags, the queue row and the explanation
+        run out-of-band in scoreIntake(); the caller commits, then schedules it."""
         try:
             new_patient = Patient(
                 name=intake.name,
@@ -123,7 +133,12 @@ class TriageService:
 
         missing_fields = [field for field in VITAL_FIELDS if getattr(intake, field) is None]
         try:
-            new_intake = IntakeRecord(**intake.model_dump(exclude={"name", "date_of_birth", "sex"}), patient_id=patient_id, missing_fields=missing_fields)
+            new_intake = IntakeRecord(
+                **intake.model_dump(exclude={"name", "date_of_birth", "sex"}),
+                patient_id=patient_id,
+                missing_fields=missing_fields,
+                scoring_status=ScoringStatus.PENDING,
+            )
             self.db.add(new_intake)
             self.db.flush()
 
@@ -135,82 +150,97 @@ class TriageService:
             )
             self.db.add(intake_created)
 
-            # Scores intake and places record in queue
-            severity_id, severityResult = self.scoringEngine.score(new_intake, self.redFlagLayer, self.db)
-            score_calculated = EventLog(
-                event_type=EventType.SCORE_CALCULATED,
-                patient_id=patient_id,
-                intake_id=new_intake.intake_id,
-                details={
-                    "esi": severityResult.esi_level,
-                    "score": severityResult.severity_score
-                }
-            )
-            self.db.add(score_calculated)
-
-            if severityResult.flag_tier < 3:
-                red_flag_fired = EventLog(
-                    event_type=EventType.RED_FLAG_FIRED,
-                    patient_id=patient_id,
-                    intake_id=new_intake.intake_id,
-                    details = {"flags": severityResult.red_flag_ids}
-                )
-                self.db.add(red_flag_fired)
-
-            esi_num = int(severityResult.esi_level[-1])
-
-            # Persistent version
-            queue_it = TriageQueue(
-                patient_id=patient_id,
-                intake_id=new_intake.intake_id,
-                severity_id=severity_id,
-                esi_band=esi_num,
-                flag_tier=severityResult.flag_tier,
-                arrival_time=new_intake.created_at
-            )
-            self.db.add(queue_it)
-
-            # Position from the persisted queue.
-            queue_position = self._db_queue_position(
-                esi_num, severityResult.flag_tier,
-                new_intake.created_at, new_intake.intake_id,
-            )
-
-            queued = EventLog(
-                event_type=EventType.QUEUED,
-                patient_id=patient_id,
-                intake_id=new_intake.intake_id,
-                details={
-                    "esi": severityResult.esi_level,
-                    "flag_tier": severityResult.flag_tier
-                }
-            )
-            self.db.add(queued)
-            self.explanationBuilder.build(severityResult, new_intake)
-
             self.db.flush()
-            return Result(new_intake.intake_id, severityResult.severity_score, queue_position)
+            return {"intake_id": new_intake.intake_id, "status": ScoringStatus.PENDING}
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.exception("Intake creation failed")
             raise HTTPException(status_code=500) from e
-        except CannotScoreError:
-            self.db.rollback()
-            logger.exception("The intake is valid but cannot be scored")
-            raise UnscoreableException()
 
 
-    def getQueue(self) -> list[QueueEntry]:
+    def scoreIntake(self, intake_id: int) -> None:
+        """Pure scoring — no transaction ownership. Computes severity, logs events,
+        inserts the queue row, builds the explanation, then flushes. Does NOT
+        commit, roll back, or set scoring_status: the caller (app/scorer.py) owns
+        the transaction and maps the outcome to a terminal status. Raises on
+        failure (CannotScoreError / SQLAlchemyError / HTTPException /
+        IntegrityError). No-op if the intake row is gone."""
+        intake = self.db.get(IntakeRecord, intake_id)
+        if intake is None:
+            logger.error("scoreIntake: intake %s not found", intake_id)
+            return
+
+        patient_id = intake.patient_id
+        severity_id, severityResult = self.scoringEngine.score(intake, self.redFlagLayer, self.db)
+
+        self.db.add(EventLog(
+            event_type=EventType.SCORE_CALCULATED,
+            patient_id=patient_id,
+            intake_id=intake_id,
+            details={"esi": severityResult.esi_level, "score": severityResult.severity_score}
+        ))
+
+        if severityResult.flag_tier < 3:
+            self.db.add(EventLog(
+                event_type=EventType.RED_FLAG_FIRED,
+                patient_id=patient_id,
+                intake_id=intake_id,
+                details={"flags": severityResult.red_flag_ids}
+            ))
+
+        esi_num = int(severityResult.esi_level[-1])
+        self.db.add(TriageQueue(
+            patient_id=patient_id,
+            intake_id=intake_id,
+            severity_id=severity_id,
+            esi_band=esi_num,
+            flag_tier=severityResult.flag_tier,
+            arrival_time=intake.created_at,
+        ))
+        self.db.add(EventLog(
+            event_type=EventType.QUEUED,
+            patient_id=patient_id,
+            intake_id=intake_id,
+            details={"esi": severityResult.esi_level, "flag_tier": severityResult.flag_tier}
+        ))
+        self.explanationBuilder.build(severityResult, intake)
+        self.db.flush()
+
+    def set_scoring_status(self, intake_id: int, scoring_status: ScoringStatus) -> None:
+        """Record a terminal scoring_status in the caller's transaction (no commit).
+        The scorer commits. Used after scoreIntake to mark SCORED / UNSCOREABLE /
+        FAILED."""
+        self.db.execute(
+            update(IntakeRecord)
+            .where(IntakeRecord.intake_id == intake_id)
+            .values(scoring_status=scoring_status)
+        )
+
+
+    def getQueue(self, limit: int = 500) -> list[QueueEntry]:
         # Read from triage_queue (the persisted source of truth), ordered by the
         # sort key, excluding dispositioned patients. A clinician ESI overrides the
         # system one for display; the band join uses whichever wins.
+        #
+        # Bounded by `limit` (default 500): with the sort-key index, Postgres stops
+        # after `limit` rows instead of scanning/returning the whole table, so cost
+        # is O(limit) not O(n). A real ED queue is well under this; it only caps
+        # pathological growth.
         effective_esi = func.coalesce(PatientSeverity.clinician_ESI, PatientSeverity.system_ESI)
 
         # One query for the whole queue. severity_id is NOT NULL on triage_queue and
-        # a queued intake is always scored, so these joins are INNER.
+        # a queued intake is always scored, so these joins are INNER. Select only
+        # the columns QueueEntry needs (not full ORM entities) — avoids per-row
+        # object hydration and loading PatientSeverity's unused JSONB columns.
         stmt = (
-            select(TriageQueue, Patient, PatientSeverity, ESIBand.priority,
-                   effective_esi.label("esi_level"))
+            select(
+                TriageQueue.intake_id, TriageQueue.patient_id, TriageQueue.flag_tier,
+                TriageQueue.status, TriageQueue.arrival_time,
+                Patient.name, Patient.date_of_birth, Patient.sex,
+                PatientSeverity.severity_score,
+                effective_esi.label("esi_level"),
+                ESIBand.priority.label("priority"),
+            )
             .join(Patient, Patient.patient_id == TriageQueue.patient_id)
             .join(PatientSeverity, PatientSeverity.severity_id == TriageQueue.severity_id)
             .outerjoin(ESIBand, ESIBand.esi_level == effective_esi)
@@ -219,28 +249,28 @@ class TriageService:
                 TriageQueue.esi_band, TriageQueue.flag_tier,
                 TriageQueue.arrival_time, TriageQueue.intake_id,
             )
+            .limit(limit)
         )
 
         entries = []
         for i, row in enumerate(self.db.execute(stmt).all()):
-            tq, patient, severity = row.TriageQueue, row.Patient, row.PatientSeverity
             if row.priority is None:
                 logger.error("esi_level wasn't in database when it should be")
                 raise HTTPException(status_code=500)
 
             entries.append(QueueEntry(
                 i + 1,
-                patient.patient_id,
-                tq.intake_id,
-                patient.name,
-                age_in_years(patient.date_of_birth),
-                patient.sex,
+                row.patient_id,
+                row.intake_id,
+                row.name,
+                age_in_years(row.date_of_birth),
+                row.sex,
                 row.esi_level,
-                tq.flag_tier,
+                row.flag_tier,
                 row.priority,
-                severity.severity_score,
-                tq.status,
-                tq.arrival_time,
+                row.severity_score,
+                row.status,
+                row.arrival_time,
             ))
 
         return entries

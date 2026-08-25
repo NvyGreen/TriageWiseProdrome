@@ -24,6 +24,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import update
 
+from app.models.intake_record import IntakeRecord
+from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
 
 # v30 canonical error messages (source of truth: API_Reference_v30.md).
@@ -71,10 +73,11 @@ def test_intake_saves_patient_and_returns_201(client, api_examples):
 
 
 def test_valid_intake_returns_201(client, api_examples):
-    """POST /patients -> 201 with the full Result: intake_id + severity + queue placement.
+    """POST /patients -> 201 accepted with {intake_id, status: pending}.
 
-    Smoke test — checks the fields are present and populated, not their exact
-    values. (`intake_id` is the id the implementation returns, by design.)
+    Scoring is out-of-band in a separate process (app/scorer.py); the endpoint no
+    longer scores. We drive scoring here via scorer.score_claimed (the same path
+    the poll loop uses) to reach SCORED with a severity row.
     """
     body = api_examples["POST /patients"]["valid_201"]["request"]["body"]
     resp = client.post("/patients/", json=body, headers={"Idempotency-Key": _unique_key()})
@@ -82,8 +85,29 @@ def test_valid_intake_returns_201(client, api_examples):
     assert resp.status_code == 201
     payload = resp.json()["payload"]
     assert "intake_id" in payload
-    assert payload["severity_score"] is not None
-    assert payload["queue_placement"] is not None
+    assert payload["status"] == "pending"
+
+    from app.dependencies import SessionLocal
+    from app import scorer
+
+    session = SessionLocal()
+    try:
+        scorer.score_claimed(session, payload["intake_id"])
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        intake = session.get(IntakeRecord, payload["intake_id"])
+        assert intake.scoring_status == "scored"
+        severity = (
+            session.query(PatientSeverity)
+            .filter(PatientSeverity.intake_id == payload["intake_id"])
+            .first()
+        )
+        assert severity is not None
+    finally:
+        session.close()
 
 
 def test_malformed_intake_returns_400(client, api_examples):
@@ -207,14 +231,17 @@ def test_expired_key_reprocesses(client, api_examples):
     assert second.json()["payload"]["intake_id"] != first_id
 
 
-def test_unscoreable_intake_returns_422(client, db_session, api_examples):
-    """Well-formed, complete body but nothing can score -> 422 unscoreable.
+def test_unscoreable_intake_marks_unscoreable(client, db_session, api_examples):
+    """Well-formed, complete body but nothing can score. The POST is accepted
+    (201, pending); out-of-band scoring hits CannotScoreError and marks the intake
+    UNSCOREABLE with no severity row — there is no synchronous 422 anymore.
 
-    Every valid complaint maps to an active rule, so a real POST always scores.
-    This path is only reachable by deactivating the matching complaint rule
-    (config-toggle, not client-triggerable) — so the test flips is_active off,
-    then restores it in finally to keep the shared test DB clean.
+    Only reachable by deactivating the matching complaint rule (config-toggle), so
+    flip is_active off, then restore it in finally.
     """
+    from app.dependencies import SessionLocal
+    from app import scorer
+
     case = api_examples["POST /patients"]["unscoreable_422"]
     body = case["request"]["body"]
     (rule_id,) = case["setup"]["deactivate_rules"]
@@ -225,10 +252,28 @@ def test_unscoreable_intake_returns_422(client, db_session, api_examples):
     db_session.commit()
     try:
         resp = client.post("/patients/", json=body, headers={"Idempotency-Key": _unique_key()})
-        assert resp.status_code == 422
-        err = resp.json()["error"]
-        assert err["code"] == "unscoreable"
-        assert err["message"] == case["response"]["body"]["error"]["message"]
+        assert resp.status_code == 201
+        payload = resp.json()["payload"]
+        assert payload["status"] == "pending"
+
+        intake_id = payload["intake_id"]
+        # Drive out-of-band scoring (the endpoint no longer scores); the rule is off
+        # so this hits CannotScoreError and marks UNSCOREABLE.
+        session = SessionLocal()
+        try:
+            scorer.score_claimed(session, intake_id)
+        finally:
+            session.close()
+
+        db_session.expire_all()  # see the scorer's committed writes
+        intake = db_session.get(IntakeRecord, intake_id)
+        assert intake.scoring_status == "unscoreable"
+        severity = (
+            db_session.query(PatientSeverity)
+            .filter(PatientSeverity.intake_id == intake_id)
+            .first()
+        )
+        assert severity is None
     finally:
         db_session.execute(
             update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=True)

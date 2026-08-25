@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, status, Query
 from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from ..dependencies import get_queue, get_db
+from ..dependencies import get_db
 from ..models.event_log import EventLog
+from ..models.intake_record import IntakeRecord
 from ..schemas.intake_update import IntakeUpdate
 from ..schemas.patient_detail_out import PatientDetailOut
-from ..services.priority_queue import PriorityQueue
-from ..services.triage_service import TriageService, EventType
+from ..services.triage_service import (
+    TriageService, EventType, ScoringStatus, IntakeNotFoundError,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,6 +44,16 @@ def update_patient(intake_id: int, updates: IntakeUpdate, db: Session = Depends(
 @router.get("/{intake_id}", status_code=status.HTTP_200_OK)
 def patient_details(intake_id: int, mode: Annotated[Literal['xai', 'blackbox'], Query()], db: Session = Depends(get_db)):
     triageService = TriageService(db)
+
+    # The intake exists before scoring produces a result. Until it's SCORED there's
+    # no severity/explanation to render, so return {intake_id, status} and let the
+    # client poll (pending) or surface the terminal state (unscoreable/failed).
+    intake = db.get(IntakeRecord, intake_id)
+    if intake is None:
+        raise IntakeNotFoundError(intake_id)
+    if intake.scoring_status != ScoringStatus.SCORED:
+        return {"intake_id": intake_id, "status": intake.scoring_status}
+
     details = triageService.getPatientDetail(intake_id)
     try:
         if mode == 'xai':

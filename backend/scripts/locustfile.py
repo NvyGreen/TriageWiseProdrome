@@ -41,6 +41,7 @@ import load_common as lc  # noqa: E402
 PORT = 8097
 BASE_URL = f"http://127.0.0.1:{PORT}"
 SERVER_LOG = Path(tempfile.gettempdir()) / "queue_stress_server.log"
+SCORER_LOG = Path(tempfile.gettempdir()) / "queue_stress_scorer.log"
 
 
 @events.init_command_line_parser.add_listener
@@ -63,7 +64,7 @@ _server = {}
 class QueueUser(HttpUser):
     host = BASE_URL
 
-    @task
+    @task(3)
     def submit(self):
         i = next(_counter)
         with self.client.post(
@@ -79,6 +80,16 @@ class QueueUser(HttpUser):
             else:
                 resp.failure(f"status {resp.status_code}")
 
+    @task(1)
+    def read_queue(self):
+        # Exercise the read path under the same load, so we measure whether
+        # GET /queue survives concurrent submits + background scoring.
+        with self.client.get("/queue/", name="GET /queue", catch_response=True) as resp:
+            if resp.status_code == 200:
+                resp.success()
+            else:
+                resp.failure(f"status {resp.status_code}")
+
 
 @events.test_start.add_listener
 def _on_start(environment, **_kw):
@@ -86,66 +97,84 @@ def _on_start(environment, **_kw):
     proc, log_file = lc.start_server(PORT, SERVER_LOG, workers=workers)
     _server["proc"], _server["log"] = proc, log_file
     lc.wait_until_up(BASE_URL)
+    # The web server no longer scores; start the standalone scorer so the pending
+    # backlog actually drains during/after the run.
+    scorer_proc, scorer_log = lc.start_scorer(SCORER_LOG)
+    _server["scorer_proc"], _server["scorer_log"] = scorer_proc, scorer_log
 
 
-def _drain_and_fetch(timeout=30.0):
-    """When the run stops, in-flight requests may still be committing. Because
-    queue.insert happens BEFORE the router's DB commit, GET /queue can transiently
-    500 on a queued id that isn't committed-visible yet. Wait until submissions
-    stop arriving and the queue matches, retrying past those transients."""
-    deadline = time.time() + timeout
-    prev, last_ids = -1, []
-    while time.time() < deadline:
-        time.sleep(0.5)
-        try:
-            ids = lc.fetch_queue_ids(BASE_URL)
-        except Exception:
-            continue  # transient: a queued id isn't committed-visible yet
-        if len(ids) == prev:
-            return ids  # queue size settled -> in-flight requests drained
-        prev, last_ids = len(ids), ids
-    return last_ids or lc.fetch_queue_ids(BASE_URL)
+def _stat(environment, name, method):
+    """Per-endpoint (avg ms, p95 ms, count, failures) or None if it never ran."""
+    entry = environment.stats.get(name, method)
+    if entry is None or entry.num_requests == 0:
+        return None
+    return {
+        "count": entry.num_requests,
+        "failures": entry.num_failures,
+        "avg": entry.avg_response_time,
+        "p95": entry.get_response_time_percentile(0.95),
+    }
 
 
 @events.test_stop.add_listener
 def _on_stop(environment, **_kw):
     try:
-        actual_ids = _drain_and_fetch()
-        # Membership truth from the DB, not the client list: Locust kills in-flight
-        # greenlets at shutdown after the server already committed, so the
-        # client-side SUBMITTED count is short. The DB has every committed intake.
-        universe = lc.db_run_intake_ids()
-        result = lc.check_queue(universe, actual_ids)
+        # Submit is async: wait for the scoring backlog to drain, then read final
+        # state straight from the DB (not by polling GET /queue, which would add
+        # read load while the server is still churning through scoring).
+        counts = lc.wait_until_scored()
+        actual_ids = lc.db_queue_ids()
+        scored_ids = lc.db_scored_intake_ids()
+        result = lc.check_queue(scored_ids, actual_ids)
         verdict = "PASS" if result["ok"] else "FAIL"
 
-        total = environment.stats.total
         opts = environment.parsed_options
         label = getattr(opts, "label", "") or ""
         workers = getattr(opts, "workers", 1) or 1
         run_time = getattr(opts, "run_time", None)
-        rps = (total.num_requests / run_time) if run_time else None
-        p95 = total.get_response_time_percentile(0.95)
+        post = _stat(environment, "POST /patients", "POST")
+        getq = _stat(environment, "GET /queue", "GET")
+
+        scored = counts.get("scored", 0)
+        unscoreable = counts.get("unscoreable", 0)
+        failed = counts.get("failed", 0)
+        pending_left = counts.get("pending", 0)
+
+        def _line(label_, s):
+            if s is None:
+                return f"- {label_}: (none)"
+            rps = s["count"] / run_time if run_time else 0
+            return (f"- {label_}: {s['count']} reqs, {s['failures']} fail, "
+                    f"{rps:.1f} req/s, avg {s['avg']:.1f} ms, p95 {s['p95']:.1f} ms")
 
         lines = [
             f"# Queue Stress — Sustained Load (build order 62){f' [{label}]' if label else ''}",
             "",
-            f"Sustained concurrent `POST /patients` (Locust) against a "
-            f"{workers}-worker uvicorn on the `{lc.TEST_DB}` DB. Queue order checked "
-            f"against a DB-derived expected order (sort key: esi_band, flag_tier, arrival, intake_id).",
+            f"Sustained concurrent `POST /patients` + `GET /queue` (Locust) against a "
+            f"{workers}-worker uvicorn on the `{lc.TEST_DB}` DB. Submit is async "
+            f"(returns `pending`; scoring runs out-of-band), so correctness is checked "
+            f"after the scoring backlog drains, read straight from the DB.",
             "",
-            "## Load",
+            "## Load (client-measured)",
             "",
             f"- Workers: **{workers}**",
             f"- Users / spawn rate / duration: **{opts.num_users} / {opts.spawn_rate}/s / {run_time}s**",
-            f"- Requests: {total.num_requests}  (failures: {total.num_failures})",
-            f"- Throughput: {rps:.1f} req/s" if rps else "- Throughput: n/a",
-            f"- Latency: avg {total.avg_response_time:.1f} ms, p95 {p95:.1f} ms",
+            _line("POST /patients", post),
+            _line("GET /queue", getq),
             "",
-            "## Correctness",
+            "## Scoring (async, after drain)",
             "",
-            f"- Succeeded (201): {result['submitted']}",
-            f"- In queue after run: {result['in_queue']}",
-            f"- Lost inserts: {len(result['lost'])}",
+            f"- Scored: {scored}",
+            f"- Unscoreable: {unscoreable}",
+            f"- Failed: {failed}",
+            f"- Still pending (backlog didn't drain): {pending_left}",
+            "",
+            "## Correctness (scored intakes vs. triage_queue)",
+            "",
+            f"- Should be queued (scored): {result['submitted']}",
+            f"- In queue: {result['in_queue']}",
+            f"- Lost (scored but not queued): {len(result['lost'])}",
+            f"- Unexpected (queued but not scored): {len(result['unexpected'])}",
             f"- Duplicates: {len(result['duplicates'])}",
             f"- Misordered: {'yes' if result['misordered'] else 'no'}"
             + (f" (first at index {result['first_misorder_index']})"
@@ -155,12 +184,12 @@ def _on_stop(environment, **_kw):
             "",
             "## Notes",
             "",
-            "- Single uvicorn worker (the in-memory queue is per-process).",
-            "- Sustained overlap over time; does not manufacture the same-instant "
-            "collision the barrier test does. Complementary probes.",
-            "- ~40 concurrent handlers server-side; extra requests queue briefly.",
-            "- Probabilistic — raises confidence, can't prove absence of races.",
-            f"- Added ~{result['submitted']} rows to the disposable `{lc.TEST_DB}` DB.",
+            "- Submit returns fast (`pending`); scoring is an in-process background "
+            "task, so throughput is still bounded by the worker's CPU + DB.",
+            "- GET /queue runs under the same load (read-path stress).",
+            "- If 'still pending' > 0, scoring couldn't keep up with submit — a real "
+            "capacity signal, not a correctness failure.",
+            f"- Added rows to the disposable `{lc.TEST_DB}` DB.",
             "",
         ]
         suffix = f"_{label}" if label else ""
@@ -178,4 +207,7 @@ def _on_stop(environment, **_kw):
         else:
             environment.process_exit_code = 0
     finally:
+        # Stop the scorer only after the drain wait above, so it can finish scoring.
+        if "scorer_proc" in _server:
+            lc.stop_server(_server["scorer_proc"], _server["scorer_log"])
         lc.stop_server(_server["proc"], _server["log"])

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Gauge, Info, ListChecks, CircleCheck, CircleAlert } from 'lucide-react';
 
 
@@ -108,13 +109,21 @@ export default function IntakeRail({
                     <div className='fb'>
                         <div className='ok'>
                             <CircleCheck size={15} />
-                            {submitState.result.message ?? 'Intake recorded.'}
+                            Intake recorded.
                         </div>
+                        {/* Scoring runs out-of-band now, so there is no score or
+                            queue position to report yet. */}
                         <ul>
                             <li>Intake ID: {submitState.result.intake_id}</li>
-                            <li>Severity score: {submitState.result.severity_score}</li>
-                            <li>Queue placement: {submitState.result.queue_placement}</li>
+                            <li>Queued for scoring — the score and queue position
+                                appear once the scorer picks it up.</li>
                         </ul>
+                        <Link
+                            className='fblink'
+                            to={`/intakes/${submitState.result.intake_id}`}
+                        >
+                            View patient →
+                        </Link>
                     </div>
                 ) : submitState?.status === 'error' ? (
                     <div className='fb error'>

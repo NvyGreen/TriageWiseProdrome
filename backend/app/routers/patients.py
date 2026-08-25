@@ -4,7 +4,7 @@ from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from ..schemas.intake_create import IntakeCreate
-from ..dependencies import get_db, get_queue
+from ..dependencies import get_db
 from ..services.idempotency import (
     DuplicateRequestException,
     IdempotencyKeyRequiredException,
@@ -13,7 +13,7 @@ from ..services.idempotency import (
     store_idempotency,
 )
 from ..services.triage_service import TriageService
-from ..services.priority_queue import PriorityQueue
+
 
 # DuplicateRequestException / IdempotencyKeyRequiredException are defined in the
 # idempotency service and re-exported here so main.py's `patients.X` handler
@@ -39,34 +39,19 @@ def record_intake(
     request_hash = hash_payload(record)
     existing = check_idempotency(idempotency_key, request_hash, db)
     if existing is not None:
-        # Replay the original stored response verbatim. It's the unwrapped 201
-        # handler dict, so returning it re-wraps identically via the default
-        # response class (all stored responses are 201 successes).
+        # Replay the original stored response verbatim (the pending ack).
         return existing.response_body
-    
-    result = triageService.submitIntake(record)
-    response_body = {
-        "message": "Intake recorded successfully",
-        "intake_id": result.intake_id,
-        "severity_score": result.severity_score,
-        "queue_placement": result.queue_placement
-    }
+
+    # Fast path: persist the intake as pending and return {intake_id, status}.
+    # A separate scorer process (app/scorer.py) claims pending intakes and scores
+    # them out-of-band; this endpoint never scores.
+    response_body = triageService.submitIntake(record)
     try:
         store_idempotency(idempotency_key, request_hash, response_body, status.HTTP_201_CREATED, db)
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
-        # try:
-        #     queue.remove(result.intake_id)
-        # except ValueError:
-        #     pass
         logger.exception("Intake commit failed")
         raise HTTPException(status_code=500) from e
-    # except HTTPException as e:
-    #     try:
-    #         queue.remove(result.intake_id)
-    #     except ValueError:
-    #         pass
-    #     raise HTTPException(status_code=500) from e
 
     return response_body

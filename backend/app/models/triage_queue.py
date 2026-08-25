@@ -6,7 +6,7 @@ class TriageQueue(Base):
 
     queue_id = Column(Integer, primary_key=True)
     patient_id = Column(Integer, ForeignKey("patient.patient_id", ondelete="CASCADE"), nullable=False, index=True)
-    intake_id = Column(Integer, ForeignKey("intake_record.intake_id", ondelete="CASCADE"), nullable=False, index=True)
+    intake_id = Column(Integer, ForeignKey("intake_record.intake_id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     severity_id = Column(Integer, ForeignKey("patient_severity.severity_id", ondelete="CASCADE"), nullable=False, index=True)
     esi_band = Column(Integer, nullable=False)
     flag_tier = Column(Integer, nullable=False)

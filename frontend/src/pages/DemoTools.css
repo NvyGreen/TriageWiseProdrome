@@ -1,0 +1,504 @@
+/* Scoped under .demo so the generic names here (.card, .tabs, .chip, .pill,
+   .stepper) can't leak into the clinical screens. */
+.demo {
+  --demo: #1f8a8a;
+  --demo-bg: #e8f4f4;
+  --demo-br: #bfe0e0;
+  --demo-deep: #136767;
+  --crit-bg: #fdecec;
+  --crit-br: #f4c4c4;
+  --amber-bg: #fff3e6;
+  --amber-br: #f3d9a8;
+  --amber-ink: #b06d18;
+  --ok-bg: #e7f5ee;
+  --ok-br: #b9e3cd;
+  --r14: 14px;
+
+  /* The inset frame is the point: the whole workspace reads as not-live. */
+  margin: 16px;
+  padding: 22px 26px 40px;
+  min-height: calc(100vh - 32px);
+  border: 1.5px solid var(--demo-br);
+  border-radius: var(--r14);
+  background: linear-gradient(var(--demo-bg), var(--bg) 130px);
+}
+
+/* Demo banner */
+.demo .demobanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding: 12px 16px;
+  border: 1px solid var(--demo-br);
+  border-left: 4px solid var(--demo);
+  border-radius: var(--r10);
+  background: var(--card);
+}
+
+.demo .demobanner .dot {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--demo);
+  color: #fff;
+}
+
+.demo .demobanner .txt strong {
+  font-size: 13.5px;
+  color: var(--demo-deep);
+}
+
+.demo .demobanner .txt div {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--slate);
+}
+
+.demo .demobanner .badge {
+  margin-left: auto;
+  padding: 5px 11px;
+  border-radius: 20px;
+  background: var(--demo);
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+}
+
+.demo .pagehead {
+  margin-bottom: 18px;
+}
+
+.demo .pagehead .h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.demo .pagehead .sub {
+  max-width: 640px;
+  margin: 0;
+}
+
+/* Tabs */
+.demo .tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 22px;
+  border-bottom: 1.5px solid var(--line);
+}
+
+.demo .tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -1.5px;
+  padding: 11px 18px;
+  border: 0;
+  border-bottom: 2.5px solid transparent;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--slate);
+  cursor: pointer;
+}
+
+.demo .tab svg {
+  flex-shrink: 0;
+}
+
+.demo .tab.on {
+  color: var(--demo-deep);
+  border-bottom-color: var(--demo);
+}
+
+/* Controls left, output right. The output column is capped rather than 1fr —
+   the table has four narrow columns and stretching it just spreads them out. */
+.demo .worktop {
+  display: grid;
+  grid-template-columns: 440px minmax(0, 720px);
+  gap: 20px;
+  align-items: start;
+}
+
+.demo .card,
+.demo .outpanel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r14);
+  padding: 20px;
+}
+
+.demo .card h2 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.demo .card .sub {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--slate);
+}
+
+.demo .lbl {
+  display: block;
+  margin: 0 0 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+/* Preset chips */
+.demo .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.demo .chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--card);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate);
+  cursor: pointer;
+}
+
+.demo .chip:hover {
+  border-color: var(--demo-br);
+  color: var(--demo-deep);
+}
+
+.demo .chip.on {
+  background: var(--demo-bg);
+  border-color: var(--demo-br);
+  color: var(--demo-deep);
+}
+
+/* Per-band steppers */
+.demo .bandgrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.demo .stepper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  overflow: hidden;
+}
+
+.demo .stepper button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 0;
+  background: #f1f4f7;
+  color: var(--slate);
+  cursor: pointer;
+}
+
+.demo .stepper button:hover {
+  background: #e5eaf0;
+  color: var(--ink);
+}
+
+.demo .stepper input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 4px;
+  text-align: center;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--card);
+  /* The +/- buttons are the control; the native spinners duplicate them and
+     only appear on hover, which reads as a glitch. */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.demo .stepper input::-webkit-outer-spin-button,
+.demo .stepper input::-webkit-inner-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.demo .stepper input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--demo-br);
+}
+
+.demo .simtotal {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  color: var(--slate);
+}
+
+.demo .simtotal strong {
+  color: var(--ink);
+}
+
+.demo .flagnote {
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--slate);
+}
+
+/* Buttons */
+.demo .btnrow {
+  display: flex;
+  gap: 10px;
+}
+
+.demo .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--r6);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.demo .btn-primary {
+  background: var(--demo);
+  color: #fff;
+}
+
+.demo .btn-primary:hover:not(:disabled) {
+  background: var(--demo-deep);
+}
+
+.demo .btn-ghost {
+  background: #eef1f5;
+  color: var(--ink);
+}
+
+.demo .btn-ghost:hover:not(:disabled) {
+  background: #e2e7ee;
+}
+
+.demo .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Output panel */
+.demo .outhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.demo .outhead h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.demo .outhead .meta {
+  font-size: 11.5px;
+  color: var(--slate);
+}
+
+.demo .outnote {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  color: var(--slate);
+}
+
+.demo .simtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.demo .simtable th {
+  padding: 7px 8px;
+  border-bottom: 1.5px solid var(--line);
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+.demo .simtable .col-pos {
+  width: 44px;
+}
+
+.demo .simtable td {
+  padding: 9px 8px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.demo .simtable tr:last-child td {
+  border-bottom: none;
+}
+
+.demo .simtable .pos {
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.demo .simtable .simid {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ESI bands, most acute to least */
+.demo .pill {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.demo .pill.e1 {
+  background: var(--crit-bg);
+  border: 1px solid var(--crit-br);
+  color: var(--crit);
+}
+
+.demo .pill.e2 {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-br);
+  color: var(--amber-ink);
+}
+
+.demo .pill.e3 {
+  background: #fff8e6;
+  border: 1px solid #f0e0b8;
+  color: #a07c14;
+}
+
+.demo .pill.e4 {
+  background: #eef1f5;
+  border: 1px solid #dde2e8;
+  color: var(--slate);
+}
+
+.demo .pill.e5 {
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-br);
+  color: var(--green);
+}
+
+.demo .flagcell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.demo .flagdot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.demo .flagdot.fd1 {
+  background: var(--crit);
+}
+
+.demo .flagdot.fd2 {
+  background: var(--amber);
+}
+
+.demo .noflag {
+  color: #c0cad6;
+}
+
+/* Secondary information — quieter than the ranking columns */
+.demo .simtable .arrival {
+  font-size: 11.5px;
+  color: var(--slate);
+  white-space: nowrap;
+}
+
+/* Empty / loading / error */
+.demo .empty {
+  padding: 30px 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--slate);
+}
+
+.demo .loaderror {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--crit-br);
+  border-radius: var(--r6);
+  background: var(--crit-bg);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #a32626;
+}
+
+.demo .placeholder {
+  padding: 22px 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--slate);
+}
+
+@media (max-width: 1100px) {
+  .demo .worktop {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .demo {
+    margin: 10px;
+    padding: 16px 14px 32px;
+  }
+
+  .demo .bandgrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .demo .demobanner {
+    flex-wrap: wrap;
+  }
+
+  .demo .demobanner .badge {
+    margin-left: 0;
+  }
+}

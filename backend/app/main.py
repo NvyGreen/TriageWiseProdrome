@@ -12,7 +12,7 @@ from .config import get_settings, Settings
 from .dependencies import get_db
 from .models.esi_band import ESIBand
 from .models.condition_reference import ConditionReference
-from .routers import patients, queue, intakes, overrides
+from .routers import patients, queue, intakes, overrides, demo
 from .services.idempotency import DuplicateRequestException, IdempotencyKeyRequiredException
 from .services.triage_service import IntakeNotFoundError, SeverityNotFoundError, UnscoreableException
 
@@ -79,6 +79,7 @@ patients_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 queue_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 intakes_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 overrides_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
+demo_app =  FastAPI(default_response_class=MedicalDisclaimerResponse)
 
 
 async def validation_handler(request: Request, exc: RequestValidationError):
@@ -211,11 +212,34 @@ async def severities_not_found_handler(request: Request, exc: SeverityNotFoundEr
         }
     )
 
+@demo_app.exception_handler(ValueError)
+async def bad_demo_body_handler(request: Request, exc: ValueError):
+    details = []
+    if str(exc).startswith("unknown preset"):
+        details.append({"field": "preset", "issue": str(exc)})
+    elif str(exc) == "SimRequest needs either a preset or custom_bands":
+        details.append({"field": "preset", "issue": str(exc)})
+        details.append({"field": "custom_bands", "issue": str(exc)})
+    else:
+        details.append({"field": "unknown", "issue": str(exc)})
 
-for sub_app in (patients_app, queue_app, intakes_app, overrides_app):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": {
+                "code": "invalid_input",
+                "message": "One or more fields are invalid.",
+                "details": details,
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
+
+
+for sub_app in (patients_app, queue_app, intakes_app, overrides_app, demo_app):
     sub_app.add_exception_handler(HTTPException, internal_server_error)
 
-for sub_app in (patients_app, intakes_app, overrides_app):
+for sub_app in (patients_app, intakes_app, overrides_app, demo_app):
     sub_app.add_exception_handler(RequestValidationError, validation_handler)
 
 for sub_app in (patients_app, intakes_app):
@@ -237,6 +261,9 @@ app.mount("/intakes", intakes_app)
 
 overrides_app.include_router(overrides.router)
 app.mount("/overrides", overrides_app)
+
+demo_app.include_router(demo.router)
+app.mount("/demo", demo_app)
 
 
 @app.get("/")

@@ -4,7 +4,7 @@ A rule-based clinical triage and prioritization engine. It takes an emergency-de
 
 > Simplified and educational. Not clinically validated. It explains and prioritizes; it does not diagnose.
 
-**UI Pending:** [triage-wise-prodrome.vercel.app](https://triage-wise-prodrome.vercel.app)
+[triage-wise-prodrome.vercel.app](https://triage-wise-prodrome.vercel.app)
 
 ## Problem
 
@@ -54,20 +54,17 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 - **Consistent API error contract** — every error returns a structured envelope with a stable code (`invalid_input`, `not_found`, `duplicate_request`, `unscoreable`, `internal_error`), a message, and a request id.
 - **Idempotent writes** — mutating endpoints require an idempotency key so retries don't double-submit.
 - **Efficient queue reads** — the whole queue is assembled in a single joined query rather than one lookup per patient.
-- **Tested and CI-gated** — a fixture-driven Pytest suite covers scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation; `main` is protected and merges only on green tests and clean lint.
+- **Tested and CI-gated** — a fixture-driven Pytest suite covers scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation; `main` is protected and merges only on green tests.
 
 ## Data & validation
 
-- **Scoring anchor (in use):** rule weights are grounded in **NHAMCS 2022** emergency-department admission rates. This sets *why* a rule carries the weight it does — it is not a test of the output.
-- **Outcome validation (planned):** measuring the system's assigned ESI against real patient outcomes (admitted / ICU / discharged) using **MC-MED** and **Synthea**-generated records. This is the check on whether the prioritization is actually right, and is part of a later phase.
-- **Interoperability (planned):** the schema carries FHIR-ready fields (`source`, `external_patient_id`) so records can originate from a FHIR feed later. FHIR ingestion/output is not yet implemented.
+- **Scoring anchor:** rule weights are grounded in **NHAMCS 2022** emergency-department admission rates. This sets *why* a rule carries the weight it does — it is not a test of the output.
+- **Outcome validation:** measuring the system's assigned ESI against real patient outcomes (admitted / ICU / discharged) using **MC-MED** and **Synthea**-generated records. This is the check on whether the prioritization is actually right.
+- **Interoperability (in progess):** the schema carries FHIR-ready fields (`source`, `external_patient_id`) so records can originate from a FHIR feed later.
 
 ## Security
 
-- **Allowlist-validated dynamic field access (in place)** — the red-flag engine resolves field names supplied by stored condition trees via `getattr`. Each name is validated against the intake table's real columns before access, so a malformed or malicious tree can't reach arbitrary attributes.
-
-Planned hardening, tracked for a later pass:
-
+- **Allowlist-validated dynamic field access** — the red-flag engine resolves field names supplied by stored condition trees via `getattr`. Each name is validated against the intake table's real columns before access, so a malformed or malicious tree can't reach arbitrary attributes.
 - **Locked-down CORS** — restrict allowed origins to the known frontend rather than a wildcard.
 
 ## Project status
@@ -80,31 +77,28 @@ Planned hardening, tracked for a later pass:
 | Red-flag layer (tree evaluation, tiers) | Complete |
 | Priority queue (heap, 4-tuple key, insert/reposition/remove) | Complete |
 | API (intake, queue, update, override; error contract; idempotency) | Complete |
-| Explanation layer — 4-part breakdown, lede, risk blurb (Phase 3) | Complete |
-| Presentation-mode toggle + dual-score + base-rate + override (Phase 3) | Complete |
-| Frontend UI (Phase 4) | Planned |
-| Outcome validation — MC-MED / Synthea (Phase 5) | Planned |
-| FHIR ingestion / output | Planned (schema-ready) |
+| Explanation layer — 4-part breakdown, lede, risk blurb | Complete |
+| Presentation-mode toggle + dual-score + base-rate + override | Complete |
+| Frontend UI | Complete |
+| Outcome validation — MC-MED / Synthea | Complete |
+| Demo Screen | Complete |
+| FHIR ingestion / output | In Progress |
 
 ## Screenshots & demo
 
-> _Coming soon._ Interface walkthrough — patient intake, the priority queue, and the per-patient explanation view.
+### Patient Intake
+![Patient Intake](screenshots/intake_screen.png)
 
-<!--
-Add screenshots here as the UI lands, e.g.:
+### Triage Queue
+![Triage Queue](screenshots/queue_screen.png)
 
-### Patient intake
-![Patient intake](docs/screenshots/intake.png)
+### Patient Detail + Explanation
+![Robert Johnson](screenshots/detail_robert_screen.png)
+![Maria Lopez](screenshots/detail_maria_screen.png)
 
-### Priority queue
-![Priority queue](docs/screenshots/queue.png)
-
-### Patient detail + explanation
-![Patient detail](docs/screenshots/detail.png)
-
-Demo video / GIF:
-![Demo](docs/screenshots/demo.gif)
--->
+### Update Patient
+![Update Pre-Submission](screenshots/update_filled_screen.png)
+![Update Post-Submission](screenshots/update_submitted_screen.png)
 
 ## Getting started
 
@@ -120,7 +114,7 @@ Demo video / GIF:
 cd backend
 
 # create + activate a virtualenv, then:
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # configure your environment
 cp .env.example .env        # then edit DATABASE_URL etc.
@@ -159,7 +153,7 @@ pytest
 - `main` always stays working
 - Make a branch per requirement/task: `feature/scoring-engine`, `fix/esi-refinement`
 - Open a PR to merge back
-- Protect `main`: no merge unless CI passes (Pytest green + lint clean)
+- Protect `main`: no merge unless CI passes (Pytest green)
 
 ## Commit Message Format
 

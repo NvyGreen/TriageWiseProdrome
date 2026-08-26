@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
-import { Activity, User, List, ChartColumn, LogOut, Clock } from 'lucide-react';
+import { Activity, User, List, ChartColumn, FlaskConical, LogOut, Clock } from 'lucide-react';
 
 import './AppLayout.css';
 
@@ -60,6 +60,10 @@ export default function AppLayout() {
                         <ChartColumn size={17} />
                         <span>Reports &amp; Metrics</span>
                     </Link>
+                    <NavLink to='/demo' className={navClass}>
+                        <FlaskConical size={17} />
+                        <span>Demo Tools</span>
+                    </NavLink>
                 </nav>
 
                 <div className='foot'>

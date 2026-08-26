@@ -1,0 +1,370 @@
+{
+  "_meta": {
+    "title": "simulation.py test cases (req D3 / build order 58)",
+    "validates": "run_simulation(SimRequest) -> list[dict]. Covers presets, custom bands, flag tie-breaking, empty scenarios, and error paths.",
+    "nature": "UNIT. All 'expect' values captured directly from running the real generate_arrivals/order_queue/run_simulation functions \u2014 not hand-computed.",
+    "conventions": [
+      "sim_id is assigned in ARRIVAL-TIME order (earliest arrival_epoch -> SIM-001), mirroring the real queue where a lower id means an earlier arrival; deterministic given the fixed seed.",
+      "Sort key: the production SortKey (esi_band, flag_tier, arrival_epoch, intake_id) - lower esi_band first, then lower flag_tier (1=time-critical before 2=occult before 3=none), then earlier arrival_epoch; intake_id (int of sim_id) is the final tie-break.",
+      "arrival_epoch = BASE_EPOCH (2026-06-26 18:56:57 UTC) + a seeded random offset in [0, 3600]s, so times/ordering are deterministic; the frontend shows time-only.",
+      "flag_tier is null in output when no flag (matches PatientDetailOut's exclude_none convention elsewhere in the app).",
+      "Empty counts (all n=0) return an empty list - this is NOT an error condition.",
+      "Unknown preset name or a request with neither preset nor custom_bands both raise ValueError.",
+      "This never touches the DB or the real queue - in-memory only, per the design decision."
+    ]
+  },
+  "cases": [
+    {
+      "_name": "preset_mass_casualty",
+      "_why": "Preset 'mass_casualty' -> arrivals generated per PRESETS config, sorted by the production SortKey (esi_band, flag_tier, arrival_epoch, intake_id).",
+      "call": {
+        "preset": "mass_casualty"
+      },
+      "expect": [
+        {
+          "position": 1,
+          "sim_id": "SIM-008",
+          "esi_band": 1,
+          "flag_tier": 1,
+          "arrival_epoch": 1782502836.0,
+          "flag_label": "Time-critical"
+        },
+        {
+          "position": 2,
+          "sim_id": "SIM-001",
+          "esi_band": 1,
+          "flag_tier": null,
+          "arrival_epoch": 1782500319.0,
+          "flag_label": null
+        },
+        {
+          "position": 3,
+          "sim_id": "SIM-003",
+          "esi_band": 1,
+          "flag_tier": null,
+          "arrival_epoch": 1782500673.0,
+          "flag_label": null
+        },
+        {
+          "position": 4,
+          "sim_id": "SIM-010",
+          "esi_band": 2,
+          "flag_tier": 2,
+          "arrival_epoch": 1782503254.0,
+          "flag_label": "Occult risk"
+        },
+        {
+          "position": 5,
+          "sim_id": "SIM-005",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782501131.0,
+          "flag_label": null
+        },
+        {
+          "position": 6,
+          "sim_id": "SIM-006",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782501220.0,
+          "flag_label": null
+        },
+        {
+          "position": 7,
+          "sim_id": "SIM-007",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782501343.0,
+          "flag_label": null
+        },
+        {
+          "position": 8,
+          "sim_id": "SIM-004",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782500788.0,
+          "flag_label": null
+        },
+        {
+          "position": 9,
+          "sim_id": "SIM-009",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782503233.0,
+          "flag_label": null
+        },
+        {
+          "position": 10,
+          "sim_id": "SIM-002",
+          "esi_band": 4,
+          "flag_tier": null,
+          "arrival_epoch": 1782500636.0,
+          "flag_label": null
+        }
+      ]
+    },
+    {
+      "_name": "preset_cardiac_cluster",
+      "_why": "Preset 'cardiac_cluster' -> arrivals generated per PRESETS config, sorted by the production SortKey (esi_band, flag_tier, arrival_epoch, intake_id).",
+      "call": {
+        "preset": "cardiac_cluster"
+      },
+      "expect": [
+        {
+          "position": 1,
+          "sim_id": "SIM-007",
+          "esi_band": 1,
+          "flag_tier": 1,
+          "arrival_epoch": 1782502836.0,
+          "flag_label": "Time-critical"
+        },
+        {
+          "position": 2,
+          "sim_id": "SIM-001",
+          "esi_band": 2,
+          "flag_tier": 2,
+          "arrival_epoch": 1782500319.0,
+          "flag_label": "Occult risk"
+        },
+        {
+          "position": 3,
+          "sim_id": "SIM-002",
+          "esi_band": 2,
+          "flag_tier": 2,
+          "arrival_epoch": 1782500673.0,
+          "flag_label": "Occult risk"
+        },
+        {
+          "position": 4,
+          "sim_id": "SIM-005",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782501220.0,
+          "flag_label": null
+        },
+        {
+          "position": 5,
+          "sim_id": "SIM-006",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782501343.0,
+          "flag_label": null
+        },
+        {
+          "position": 6,
+          "sim_id": "SIM-008",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782503254.0,
+          "flag_label": null
+        },
+        {
+          "position": 7,
+          "sim_id": "SIM-003",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782500788.0,
+          "flag_label": null
+        },
+        {
+          "position": 8,
+          "sim_id": "SIM-004",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782501131.0,
+          "flag_label": null
+        }
+      ]
+    },
+    {
+      "_name": "preset_quiet_night",
+      "_why": "Preset 'quiet_night' -> arrivals generated per PRESETS config, sorted by the production SortKey (esi_band, flag_tier, arrival_epoch, intake_id).",
+      "call": {
+        "preset": "quiet_night"
+      },
+      "expect": [
+        {
+          "position": 1,
+          "sim_id": "SIM-007",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782502836.0,
+          "flag_label": null
+        },
+        {
+          "position": 2,
+          "sim_id": "SIM-001",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782500319.0,
+          "flag_label": null
+        },
+        {
+          "position": 3,
+          "sim_id": "SIM-002",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782500673.0,
+          "flag_label": null
+        },
+        {
+          "position": 4,
+          "sim_id": "SIM-005",
+          "esi_band": 4,
+          "flag_tier": null,
+          "arrival_epoch": 1782501220.0,
+          "flag_label": null
+        },
+        {
+          "position": 5,
+          "sim_id": "SIM-006",
+          "esi_band": 4,
+          "flag_tier": null,
+          "arrival_epoch": 1782501343.0,
+          "flag_label": null
+        },
+        {
+          "position": 6,
+          "sim_id": "SIM-008",
+          "esi_band": 4,
+          "flag_tier": null,
+          "arrival_epoch": 1782503254.0,
+          "flag_label": null
+        },
+        {
+          "position": 7,
+          "sim_id": "SIM-003",
+          "esi_band": 5,
+          "flag_tier": null,
+          "arrival_epoch": 1782500788.0,
+          "flag_label": null
+        },
+        {
+          "position": 8,
+          "sim_id": "SIM-004",
+          "esi_band": 5,
+          "flag_tier": null,
+          "arrival_epoch": 1782501131.0,
+          "flag_label": null
+        }
+      ]
+    },
+    {
+      "_name": "custom_flag_tiebreak",
+      "_why": "Custom bands: 1 ESI-1 (no flag), 2 ESI-2 (one time-critical). Verifies the flagged ESI-2 sorts AHEAD of the unflagged ESI-2 within the same band.",
+      "call": {
+        "custom_bands": {
+          "1": {
+            "n": 1,
+            "flags": {}
+          },
+          "2": {
+            "n": 2,
+            "flags": {
+              "1": 1
+            }
+          }
+        }
+      },
+      "expect": [
+        {
+          "position": 1,
+          "sim_id": "SIM-003",
+          "esi_band": 1,
+          "flag_tier": null,
+          "arrival_epoch": 1782502836.0,
+          "flag_label": null
+        },
+        {
+          "position": 2,
+          "sim_id": "SIM-002",
+          "esi_band": 2,
+          "flag_tier": 1,
+          "arrival_epoch": 1782500673.0,
+          "flag_label": "Time-critical"
+        },
+        {
+          "position": 3,
+          "sim_id": "SIM-001",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782500319.0,
+          "flag_label": null
+        }
+      ]
+    },
+    {
+      "_name": "empty_scenario_no_error",
+      "_why": "All counts zero -> empty arrivals list, NOT an error. run_simulation returns [].",
+      "call": {
+        "custom_bands": {
+          "1": {
+            "n": 0,
+            "flags": {}
+          }
+        }
+      },
+      "expect": []
+    },
+    {
+      "_name": "unknown_preset_raises",
+      "_why": "Preset name not in PRESETS -> ValueError('unknown preset: ...').",
+      "call": {
+        "preset": "zombie_outbreak"
+      },
+      "expect_error": "ValueError"
+    },
+    {
+      "_name": "missing_both_raises",
+      "_why": "SimRequest with neither preset nor custom_bands set -> ValueError (nothing to generate from).",
+      "call": {},
+      "expect_error": "ValueError"
+    },
+    {
+      "_name": "band_only_sort_no_flags",
+      "_why": "One arrival each in ESI-3, ESI-1, ESI-2 (built out of order) -> output MUST be sorted 1,2,3 regardless of input order. No flags in play; pure band sort.",
+      "call": {
+        "custom_bands": {
+          "3": {
+            "n": 1,
+            "flags": {}
+          },
+          "1": {
+            "n": 1,
+            "flags": {}
+          },
+          "2": {
+            "n": 1,
+            "flags": {}
+          }
+        }
+      },
+      "expect": [
+        {
+          "position": 1,
+          "sim_id": "SIM-003",
+          "esi_band": 1,
+          "flag_tier": null,
+          "arrival_epoch": 1782502836.0,
+          "flag_label": null
+        },
+        {
+          "position": 2,
+          "sim_id": "SIM-002",
+          "esi_band": 2,
+          "flag_tier": null,
+          "arrival_epoch": 1782500673.0,
+          "flag_label": null
+        },
+        {
+          "position": 3,
+          "sim_id": "SIM-001",
+          "esi_band": 3,
+          "flag_tier": null,
+          "arrival_epoch": 1782500319.0,
+          "flag_label": null
+        }
+      ]
+    }
+  ]
+}

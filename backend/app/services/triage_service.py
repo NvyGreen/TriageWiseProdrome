@@ -29,9 +29,9 @@ from ..schemas.trigger_info import TriggerInfo
 from ..schemas.override_info import OverrideInfo
 
 from ..services.priority_queue import PriorityQueue
-from ..services.scoring_engine import ScoringEngine, CannotScoreError
-from ..services.red_flag_layer import RedFlagLayer
-from ..services.explanation_builder import ExplanationBuilder
+from ..services.scoring_engine import ScoringEngine, CannotScoreException, ScoringRetrievalException
+from ..services.red_flag_layer import RedFlagLayer, MalformedTreeException, RedFlagRetrievalException
+from ..services.explanation_builder import ExplanationBuilder, ExplanationBuildException
 
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
@@ -163,7 +163,7 @@ class TriageService:
         inserts the queue row, builds the explanation, then flushes. Does NOT
         commit, roll back, or set scoring_status: the caller (app/scorer.py) owns
         the transaction and maps the outcome to a terminal status. Raises on
-        failure (CannotScoreError / SQLAlchemyError / HTTPException /
+        failure (CannotScoreException / SQLAlchemyError / HTTPException /
         IntegrityError). No-op if the intake row is gone."""
         intake = self.db.get(IntakeRecord, intake_id)
         if intake is None:
@@ -203,6 +203,7 @@ class TriageService:
             intake_id=intake_id,
             details={"esi": severityResult.esi_level, "flag_tier": severityResult.flag_tier}
         ))
+        
         self.explanationBuilder.build(severityResult, intake)
         self.db.flush()
 
@@ -475,11 +476,17 @@ class TriageService:
             
             self.db.flush()
             return Result(intake_id, severity_score, new_position)
-        except SQLAlchemyError as e:
+        except (
+            SQLAlchemyError,
+            ScoringRetrievalException,
+            MalformedTreeException,
+            RedFlagRetrievalException,
+            ExplanationBuildException
+        ) as e:
             self.db.rollback()
             logger.exception("Vitals update failed")
             raise HTTPException(status_code=500) from e
-        except CannotScoreError:
+        except CannotScoreException:
             self.db.rollback()
             logger.exception("The intake is valid but cannot be scored")
             raise UnscoreableException()

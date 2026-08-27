@@ -15,14 +15,13 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from fastapi.exceptions import HTTPException
 from sqlalchemy import select, update
 
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
-from app.services.scoring_engine import ScoringEngine, CannotScoreError
+from app.services.scoring_engine import ScoringEngine, CannotScoreException, ScoringRetrievalException
 from app.services.red_flag_layer import RedFlagLayer
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
@@ -107,9 +106,8 @@ def test_unrecognized_scoring_action_is_server_error(db_session):
     db_session.commit()
     try:
         intake = _seed_intake(db_session, BY_NAME["heart_rate_missing_rule_skipped"]["intake"])
-        with pytest.raises(HTTPException) as e:
+        with pytest.raises(ScoringRetrievalException):
             ScoringEngine(db_session).score(intake, RedFlagLayer(db_session), db_session)
-        assert e.value.status_code == 500
     finally:
         for rule_id, action in saved.items():
             db_session.execute(
@@ -130,5 +128,5 @@ def test_missing_chief_complaint_raises(db_session):
     intake = IntakeRecord(**case["intake"])
     engine = ScoringEngine(db_session)
 
-    with pytest.raises(CannotScoreError):
+    with pytest.raises(CannotScoreException):
         engine.score(intake, RedFlagLayer(db_session), db_session)

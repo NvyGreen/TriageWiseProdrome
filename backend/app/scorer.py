@@ -23,8 +23,10 @@ from fastapi.exceptions import HTTPException
 
 from .dependencies import SessionLocal
 from .models.intake_record import IntakeRecord
-from .services.scoring_engine import CannotScoreError
+from .services.scoring_engine import CannotScoreException, ScoringRetrievalException
+from .services.red_flag_layer import MalformedTreeException, RedFlagRetrievalException
 from .services.triage_service import ScoringStatus, TriageService
+from .services.explanation_builder import ExplanationBuildException
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ def score_claimed(db, intake_id):
         service.scoreIntake(intake_id)
         service.set_scoring_status(intake_id, ScoringStatus.SCORED)
         db.commit()
-    except CannotScoreError:
+    except CannotScoreException:
         db.rollback()
         _mark_terminal(db, intake_id, ScoringStatus.UNSCOREABLE)
         logger.info("Intake %s unscoreable", intake_id)
@@ -69,7 +71,14 @@ def score_claimed(db, intake_id):
         # claim is bypassed). The winner owns it; discard this attempt.
         db.rollback()
         logger.info("Intake %s already queued; skipping", intake_id)
-    except (SQLAlchemyError, HTTPException):
+    except (
+        SQLAlchemyError,
+        HTTPException,
+        ExplanationBuildException,
+        MalformedTreeException,
+        RedFlagRetrievalException,
+        ScoringRetrievalException,
+    ):
         db.rollback()
         _mark_terminal(db, intake_id, ScoringStatus.FAILED)
         logger.exception("Scoring intake %s failed", intake_id)

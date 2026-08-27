@@ -233,7 +233,7 @@ def test_expired_key_reprocesses(client, api_examples):
 
 def test_unscoreable_intake_marks_unscoreable(client, db_session, api_examples):
     """Well-formed, complete body but nothing can score. The POST is accepted
-    (201, pending); out-of-band scoring hits CannotScoreError and marks the intake
+    (201, pending); out-of-band scoring hits CannotScoreException and marks the intake
     UNSCOREABLE with no severity row — there is no synchronous 422 anymore.
 
     Only reachable by deactivating the matching complaint rule (config-toggle), so
@@ -258,7 +258,7 @@ def test_unscoreable_intake_marks_unscoreable(client, db_session, api_examples):
 
         intake_id = payload["intake_id"]
         # Drive out-of-band scoring (the endpoint no longer scores); the rule is off
-        # so this hits CannotScoreError and marks UNSCOREABLE.
+        # so this hits CannotScoreException and marks UNSCOREABLE.
         session = SessionLocal()
         try:
             scorer.score_claimed(session, intake_id)

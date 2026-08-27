@@ -6,8 +6,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from fastapi.exceptions import HTTPException
-
 from ..models.intake_record import IntakeRecord
 from ..models.scoring_rule import ScoringRule
 from ..models.patient_severity import PatientSeverity
@@ -31,7 +29,11 @@ incompleteDriver = namedtuple("incompleteDriver", ["rule_id", "factor", "thresho
 logger = logging.getLogger(__name__)
 
 
-class CannotScoreError(Exception):
+class CannotScoreException(Exception):
+    def __init__(self, msg: str):
+        self.msg = msg
+
+class ScoringRetrievalException(Exception):
     def __init__(self, msg: str):
         self.msg = msg
 
@@ -43,7 +45,7 @@ class ScoringEngine:
             raw_rules = db.scalars(stmt).all()
         except SQLAlchemyError as e:
             logger.exception("Could not get scoring rules")
-            raise HTTPException(status_code=500) from e
+            raise ScoringRetrievalException("Could not get scoring rules")
 
         self.rules: list[Rule] = []
         for raw_rule in raw_rules:
@@ -86,7 +88,7 @@ class ScoringEngine:
                     continue
 
                 if rule.min_bound is None and rule.max_bound is None:
-                    raise CannotScoreError(f"{rule.factor} min bound and max bound are both missing")
+                    raise CannotScoreException(f"{rule.factor} min bound and max bound are both missing")
 
                 if rule.min_bound is not None and check_vital >= rule.min_bound:
                     if rule.max_bound is None or check_vital <= rule.max_bound:
@@ -104,7 +106,7 @@ class ScoringEngine:
 
             elif rule.rule_type == "complaint":
                 if intake.chief_complaint is None:
-                    raise CannotScoreError("Chief complaint cannot be missing")
+                    raise CannotScoreException("Chief complaint cannot be missing")
                 if intake.chief_complaint == rule.complaint_group:
                     points += rule.weight
                     # An intake can only ever have one chief complaint, so this will only trigger once
@@ -112,7 +114,7 @@ class ScoringEngine:
                     incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, intake.chief_complaint, rule.weight, rule.esi_anchor))
                 
         if len(incomplete_drivers) == 0:
-            raise CannotScoreError("The intake is valid but cannot be scored")
+            raise CannotScoreException("The intake is valid but cannot be scored")
         
         initial_esi = ""
         if points >= ESI_THRESHOLDS["ESI-1"]:
@@ -214,7 +216,7 @@ class ScoringEngine:
         except SQLAlchemyError as e:
             db.rollback()
             logger.exception("Patient severity creation failed")
-            raise HTTPException(status_code=500) from e
+            raise CannotScoreException("Patient severity creation failed")
 
         result.flag_tier = flag_tier
         result.red_flag_ids = red_flag_ids
@@ -226,15 +228,15 @@ class ScoringEngine:
             if rule.factor == field:
                 if rule.scoring_action not in FallbackCodes:
                     logger.error(f"{rule.scoring_action} not a recognized fallback")
-                    raise HTTPException(status_code=500)
+                    raise ScoringRetrievalException(f"{rule.scoring_action} not a recognized fallback")
                 return rule.confidence_effect == "low", rule.scoring_action
 
-        raise CannotScoreError("Could not find matching rule")
+        raise CannotScoreException("Could not find matching rule")
     
 
     def refineByResource(self, band: str, resource_level: str):
         if resource_level is None:
-            raise CannotScoreError("resource_level cannot be missing")
+            raise CannotScoreException("resource_level cannot be missing")
 
         if band != ESILevels.ESI_3:
             return False, band

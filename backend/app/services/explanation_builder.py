@@ -5,8 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from fastapi.exceptions import HTTPException
-
 from ..models.intake_record import IntakeRecord
 from ..models.ai_explanation import AIExplanation
 from ..models.patient_severity import PatientSeverity
@@ -15,6 +13,11 @@ from ..models.red_flag_rule import RedFlagRule
 from ..utils.severity_result import SeverityResult
 from ..utils.explanation import Explanation
 from ..utils.constants import VITAL_MAP
+
+
+class ExplanationBuildException(Exception):
+    def __init__(self, msg):
+        self.msg = msg
 
 
 BEYOND_THE_DATA = "Appearance, work of breathing, distress, social context, staffing - outside this engine."
@@ -77,7 +80,7 @@ class ExplanationBuilder:
             severity = self.db.scalar(stmt)
             if severity is None:
                 logger.error("severity wasn't in database when it should be")
-                raise HTTPException(status_code=500)
+                raise ExplanationBuildException("severity wasn't in database when it should be")
 
             factor_breakdown = [asdict(d) for d in severityResult.named_drivers]
 
@@ -107,10 +110,10 @@ class ExplanationBuilder:
                 existing.gaps = gaps
 
             self.db.flush()
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             self.db.rollback()
             logger.exception("Explanation creation failed")
-            raise HTTPException(status_code=500) from e
+            raise ExplanationBuildException("Explanation creation failed")
 
         return Explanation(
             severityResult.data_completeness,

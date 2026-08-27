@@ -25,3 +25,4 @@ alembic
 pydantic
 pydantic-settings
 psycopg2-binary
+honcho          # process manager: runs the web + scorer from one Procfile (deploy)

@@ -27,19 +27,12 @@ from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.triage_queue import TriageQueue
 from app.schemas.intake_update import IntakeUpdate, Status
-from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import EventType, TriageService, IntakeNotFoundError
 
 
 def _at(hhmm: str) -> datetime:
-    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
+    """Arrival time as a timezone-aware datetime (matches triage_queue.arrival_time)."""
     return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
-
-
-@pytest.fixture
-def queue():
-    """A fresh queue per test — never the app's singleton."""
-    return PriorityQueue()
 
 
 def _seed(db_session, name="Update Patient", **vitals):
@@ -82,13 +75,11 @@ def _events(db_session, intake_id, event_type):
     )
 
 
-def test_partial_update_changes_only_sent_fields(db_session, queue):
+def test_partial_update_changes_only_sent_fields(db_session):
     _, intake_id = _seed(
         db_session, "Partial Update",
         heart_rate=100, pain_level=4, respiration_rate=18,
     )
-    # Clinical update re-queues, so the intake must already be in the queue.
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).update_patient(intake_id, IntakeUpdate(pain_level=8))
     db_session.commit()
@@ -99,11 +90,10 @@ def test_partial_update_changes_only_sent_fields(db_session, queue):
     assert intake.respiration_rate == 18   # untouched
 
 
-def test_case_update_records_only_sent_vitals(db_session, queue):
+def test_case_update_records_only_sent_vitals(db_session):
     patient_id, intake_id = _seed(
         db_session, "Case Update Row", heart_rate=100, pain_level=4,
     )
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).update_patient(intake_id, IntakeUpdate(pain_level=8))
     db_session.commit()
@@ -114,9 +104,8 @@ def test_case_update_records_only_sent_vitals(db_session, queue):
     assert rows[0].updated_vitals == {"pain_level": 8}
 
 
-def test_clinical_update_fires_case_updated_event(db_session, queue):
+def test_clinical_update_fires_case_updated_event(db_session):
     _, intake_id = _seed(db_session, "Event Patient", heart_rate=100)
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).update_patient(intake_id, IntakeUpdate(heart_rate=120))
     db_session.commit()
@@ -136,11 +125,9 @@ def test_empty_patch_is_rejected():
     assert "at least one vital" in str(e.value)
 
 
-def test_unchanged_values_write_nothing(db_session, queue):
+def test_unchanged_values_write_nothing(db_session):
     """Values identical to what's stored are a no-op, not an update."""
     _, intake_id = _seed(db_session, "Same Values", heart_rate=100, pain_level=4)
-    # Even a no-op update reads back the queue position, so it must be enqueued.
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).update_patient(
         intake_id, IntakeUpdate(heart_rate=100, pain_level=4)
@@ -167,9 +154,8 @@ def test_disposition_removes_from_queue(db_session):
     assert ids == [first, last]
 
 
-def test_status_change_fires_status_changed_event(db_session, queue):
+def test_status_change_fires_status_changed_event(db_session):
     _, intake_id = _seed(db_session, "Status Patient")
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).update_patient(
         intake_id, IntakeUpdate(status=Status.IN_ROOM)
@@ -212,11 +198,10 @@ def test_status_and_vitals_together_is_rejected():
     assert "either status or vitals" in str(e.value)
 
 
-def test_merged_diastolic_ge_systolic_raises(db_session, queue):
+def test_merged_diastolic_ge_systolic_raises(db_session):
     """Update sends only diastolic; merged against the stored systolic it's too
     high, so the service (not IntakeUpdate) rejects it with RequestValidationError."""
     _, intake_id = _seed(db_session, "Dia Merge", blood_pressure_systolic=120)
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     with pytest.raises(RequestValidationError):
         TriageService(db_session).update_patient(
@@ -224,11 +209,10 @@ def test_merged_diastolic_ge_systolic_raises(db_session, queue):
         )
 
 
-def test_decimal_vital_old_value_is_floated(db_session, queue):
+def test_decimal_vital_old_value_is_floated(db_session):
     """A stored Decimal vital (temperature) is floated before diffing, so the
     change is detected and recorded."""
     _, intake_id = _seed(db_session, "Temp Update", temperature=Decimal("98.6"))
-    queue.insert(3, 3, _at("10:00"), intake_id)
 
     TriageService(db_session).update_patient(
         intake_id, IntakeUpdate(temperature=99.5)

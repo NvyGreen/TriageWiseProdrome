@@ -2,10 +2,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.dependencies import get_queue
-from app.main import patients_app, queue_app
-from app.services.priority_queue import PriorityQueue
-
 
 def test_endpoints_have_disclaimer(client):
     disclaimer_message = "simplified/educational, not clinically validated; explains & prioritizes, does not diagnose."
@@ -32,23 +28,7 @@ def test_endpoints_have_disclaimer(client):
     assert cr_meta["disclaimer"] == disclaimer_message
 
 
-@pytest.fixture
-def shared_queue():
-    """One fresh queue shared by BOTH POST /patients (insert) and GET /queue (read).
-
-    get_queue resolves per-app, so the override must go on both sub-apps with the
-    same instance — otherwise the POST inserts into one queue and the GET reads
-    another (empty) one.
-    """
-    queue = PriorityQueue()
-    for sub_app in (patients_app, queue_app):
-        sub_app.dependency_overrides[get_queue] = lambda: queue
-    yield queue
-    for sub_app in (patients_app, queue_app):
-        sub_app.dependency_overrides.pop(get_queue, None)
-
-
-def test_post_patient_appears_in_queue(client, shared_queue, api_examples):
+def test_post_patient_appears_in_queue(client, api_examples):
     """End-to-end: POST a valid intake -> scored + queued -> GET /queue shows it.
 
     Uses the contract's valid_201 body as input; asserts the REAL computed values

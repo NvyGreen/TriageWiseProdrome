@@ -17,13 +17,8 @@ from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.triage_queue import TriageQueue
-from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import TriageService
 from app.utils.dates import age_in_years
-
-# get_queue ignores the PriorityQueue arg now (reads the DB), but the signature
-# still takes one, so hand it a throwaway.
-_UNUSED_QUEUE = PriorityQueue()
 
 
 def _at(hhmm: str) -> datetime:

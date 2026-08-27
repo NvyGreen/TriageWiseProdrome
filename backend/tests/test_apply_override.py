@@ -1,14 +1,13 @@
 """Integration tests for TriageService.apply_override, driven by override_test_cases.json.
 
 Each case seeds a scored patient (patient + intake_record + patient_severity) and a
-pre-populated PriorityQueue with fillers, calls apply_override, and asserts the full
+pre-populated triage_queue with fillers, calls apply_override, and asserts the full
 effect: Result, clinician_ESI mutation, the persisted override row, events
 (override_applied always; reprioritized only on real movement), and queue position.
 
 PKs are NOT pinned — the JSON's patient/intake/severity ids are join keys; rows are
-inserted with autoincrement and the real ids threaded through. Queue fillers use their
-literal JSON intake_id (they're never looked up in the DB, only ordered in the heap).
-Arrival labels map to distinct times so tie-breaks are deterministic.
+inserted with autoincrement and the real ids threaded through. Arrival labels map to
+distinct times so tie-breaks are deterministic.
 """
 import json
 from datetime import date, datetime, timezone
@@ -23,7 +22,6 @@ from app.models.override import Override
 from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.triage_queue import TriageQueue
-from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import (
     EventType,
     ReasonCode,
@@ -76,12 +74,12 @@ def _seed(db_session, seed):
     return intake, severity
 
 
-def _seed_queue(db_session, queue, queue_seed, target_json_id, target_intake, target_severity):
-    """Insert each queue entry into BOTH the in-memory heap and triage_queue.
+def _seed_queue(db_session, queue_seed, target_json_id, target_intake, target_severity):
+    """Insert each queue entry into triage_queue.
 
     The target reuses its seeded rows; fillers get a minimal patient/intake/
-    severity chain so they exist in the DB — apply_override now reads positions
-    from triage_queue, so the fillers can't live only in the heap.
+    severity chain so they exist in the DB — apply_override reads positions
+    from triage_queue.
 
     The _test DB accumulates triage_queue rows across tests, so clear the table
     first: position math counts the whole table, and cases like "alone in the
@@ -112,7 +110,6 @@ def _seed_queue(db_session, queue, queue_seed, target_json_id, target_intake, ta
             patient_id, intake_id, severity_id = (
                 patient.patient_id, fill_intake.intake_id, fill_sev.severity_id
             )
-        queue.insert(band, entry["flag_tier"], arrival, intake_id)
         db_session.add(TriageQueue(
             patient_id=patient_id, intake_id=intake_id, severity_id=severity_id,
             esi_band=band, flag_tier=entry["flag_tier"], arrival_time=arrival,
@@ -134,8 +131,7 @@ def test_apply_override(case, db_session):
     expect = case["expect"]
     intake, severity = _seed(db_session, seed)
 
-    queue = PriorityQueue()
-    _seed_queue(db_session, queue, seed["queue_seed"], seed["intake_record"]["intake_id"], intake, severity)
+    _seed_queue(db_session, seed["queue_seed"], seed["intake_record"]["intake_id"], intake, severity)
 
     call = case["call"]
     result = TriageService(db_session).apply_override(

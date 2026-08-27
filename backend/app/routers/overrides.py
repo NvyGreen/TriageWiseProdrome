@@ -3,9 +3,8 @@ from fastapi import APIRouter, Depends, Header, status
 from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from ..dependencies import get_queue, get_db
+from ..dependencies import get_db
 from ..services.triage_service import TriageService
-from ..services.priority_queue import PriorityQueue
 from ..services.idempotency import (
     DuplicateRequestException,
     IdempotencyKeyRequiredException,

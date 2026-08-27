@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
-from ..dependencies import get_queue, get_db
-from ..services.priority_queue import PriorityQueue
+from ..dependencies import get_db
 from ..services.triage_service import TriageService
 
 router = APIRouter()

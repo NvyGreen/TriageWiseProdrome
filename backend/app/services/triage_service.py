@@ -28,18 +28,15 @@ from ..schemas.severity_info import SeverityInfo
 from ..schemas.trigger_info import TriggerInfo
 from ..schemas.override_info import OverrideInfo
 
-from ..services.priority_queue import PriorityQueue
 from ..services.scoring_engine import ScoringEngine, CannotScoreException, ScoringRetrievalException
 from ..services.red_flag_layer import RedFlagLayer, MalformedTreeException, RedFlagRetrievalException
 from ..services.explanation_builder import ExplanationBuilder, ExplanationBuildException
 
 from ..utils.result import Result
 from ..utils.queue_entry import QueueEntry
-from ..utils.severity_result import SeverityResult
 from ..utils.driver import Driver
 from ..utils.patient_detail import PatientDetail
 from ..utils.explanation import Explanation
-from ..utils.trigger import Trigger
 from ..utils.dates import age_in_years
 from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS, LABEL_MAP
 from ..utils.enums import ReasonCode

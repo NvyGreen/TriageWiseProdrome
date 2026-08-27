@@ -1,3 +1,11 @@
+"""ARTIFACT — not used by the running app.
+
+A linear-scan reference implementation of the triage-queue ordering, from before
+the queue was persisted to the DB (`triage_queue`). No app code references it; it
+exists only for `tests/test_queue.py`, which runs the same cases against it and
+PriorityQueue to prove they order identically. Excluded from the coverage gate
+(see .coveragerc).
+"""
 from datetime import datetime, timezone
 from app.services.queue_key import SortKey
 

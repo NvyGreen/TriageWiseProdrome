@@ -1,3 +1,11 @@
+"""ARTIFACT — not used by the running app.
+
+Legacy in-memory triage queue from before the queue was persisted. The live queue
+is now the DB `triage_queue` table (read/ordered via TriageService.get_queue); no
+app code references this class. It's kept only for `tests/test_queue.py`, which
+exercises it (with NaiveListQueue) as a reference implementation of the ordering
+contract, and it's excluded from the coverage gate (see .coveragerc).
+"""
 from datetime import datetime
 import heapq
 import threading

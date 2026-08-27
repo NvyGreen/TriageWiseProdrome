@@ -20,11 +20,10 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from fastapi.exceptions import HTTPException
 
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
-from app.services.red_flag_layer import RedFlagLayer, _between, _in, _contains_any
+from app.services.red_flag_layer import RedFlagLayer, MalformedTreeException, _between, _in, _contains_any
 from app.services.scoring_engine import ScoringEngine
 from app.utils.trigger import Trigger
 
@@ -149,39 +148,39 @@ def test_helper_within_or(db_session):
 
 def test_unrecognized_top_op_raises(db_session):
     layer = _custom_layer(db_session, {"op": "XOR", "conditions": [{"field": "heart_rate", "cmp": ">", "value": 100}]})
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         layer.check(IntakeRecord(), None, db_session)
 
 
 def test_unrecognized_top_node_raises(db_session):
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, {"unknown": "node"}).check(IntakeRecord(), None, db_session)
 
 
 def test_unrecognized_op_within_and_raises(db_session):
     tree = {"op": "AND", "conditions": [{"op": "XOR", "conditions": [{"field": "heart_rate", "cmp": ">", "value": 100}]}]}
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
 
 
 def test_unrecognized_node_within_and_raises(db_session):
     tree = {"op": "AND", "conditions": [{"unknown": "node"}]}
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
 
 
 def test_unrecognized_op_within_or_raises(db_session):
     tree = {"op": "OR", "conditions": [{"op": "XOR", "conditions": [{"field": "heart_rate", "cmp": ">", "value": 100}]}]}
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
 
 
 def test_unrecognized_node_within_or_raises(db_session):
     tree = {"op": "OR", "conditions": [{"unknown": "node"}]}
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
 
 
 def test_unrecognized_helper_raises(db_session):
-    with pytest.raises(HTTPException):
+    with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, {"helper": "bogus", "cmp": ">", "value": 1}).check(IntakeRecord(), None, db_session)

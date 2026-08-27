@@ -42,7 +42,7 @@ from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
 from app.models.scoring_rule import ScoringRule
 from app.services.red_flag_layer import RedFlagLayer
-from app.services.scoring_engine import ScoringEngine, CannotScoreError
+from app.services.scoring_engine import ScoringEngine, CannotScoreException
 
 BACKEND = Path(__file__).resolve().parents[1]
 ROOT = BACKEND.parent
@@ -84,7 +84,7 @@ def _score_record(rec, engine, layer, db):
             float(result.severity_score),
             1 if rec["actual_outcome"] in ADMIT_OUTCOMES else 0,
         )
-    except CannotScoreError:
+    except CannotScoreException:
         return None
     finally:
         nested.rollback()

@@ -165,7 +165,7 @@
         "queued"
       ],
       "order_matters": false,
-      "_note": "Whole action rolls back on CannotScoreError — assert event_log gained NO rows for this intake, including intake_created if it's inside the rolled-back transaction."
+      "_note": "Whole action rolls back on CannotScoreException — assert event_log gained NO rows for this intake, including intake_created if it's inside the rolled-back transaction."
     },
     {
       "_name": "clinical_update_logs_case_updated_and_scored",

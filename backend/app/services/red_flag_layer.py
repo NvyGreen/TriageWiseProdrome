@@ -5,8 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from fastapi.exceptions import HTTPException
-
 from ..models.red_flag_rule import RedFlagRule
 from ..models.intake_record import IntakeRecord
 from ..models.patient import Patient
@@ -31,6 +29,15 @@ VITAL_SET = set(VITAL_MAP.keys())
 VITAL_SET.discard("Pain score")
 
 ALLOWED_FIELDS = {c.name for c in IntakeRecord.__table__.columns}
+
+
+class MalformedTreeException(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+class RedFlagRetrievalException(Exception):
+    def __init__(self, msg):
+        self.msg = msg
 
 
 def _between(value: int | float, thresholds: list[int | float]) -> bool:
@@ -83,7 +90,7 @@ class RedFlagLayer:
             raw_triggers = db.scalars(stmt).all()
         except SQLAlchemyError as e:
             logger.exception("Could not get red flag rules")
-            raise HTTPException(status_code=500) from e
+            raise RedFlagRetrievalException("Could not get red flag rules")
 
         self.triggers: list[Trigger] = []
         for raw_trigger in raw_triggers:
@@ -107,7 +114,7 @@ class RedFlagLayer:
             if pattern_tree.get("op"):
                 if not pattern_tree.get("conditions"):
                     logger.error("Expected conditions")
-                    raise HTTPException(status_code=500)
+                    raise MalformedTreeException(f"Expected conditions for operator {pattern_tree["op"]}")
                 
                 if pattern_tree["op"] == "AND":
                     triggered = self._parse_and(pattern_tree["conditions"], intake, score, db)
@@ -115,14 +122,14 @@ class RedFlagLayer:
                     triggered = self._parse_or(pattern_tree["conditions"], intake, score, db)
                 else:
                     logger.error(f"Unrecognized format: {pattern_tree}")
-                    raise HTTPException(status_code=500)
+                    raise MalformedTreeException(f"Unrecognized format: {pattern_tree}")
             elif pattern_tree.get("helper"):
                 triggered = self._parse_helper(pattern_tree, intake, score, db)
             elif pattern_tree.get("field"):
                 triggered = self._parse_field(pattern_tree, intake)
             else:
                 logger.error(f"Unrecognized format: {pattern_tree}")
-                raise HTTPException(status_code=500)
+                raise MalformedTreeException(f"Unrecognized format: {pattern_tree}")
 
             if triggered:
                 fired_flags.append(trigger)
@@ -134,13 +141,13 @@ class RedFlagLayer:
         status = True
         if len(conditions) == 0:
             logger.error("Coniditions empty")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException("Conditions list exists but is empty")
         
         for condition in conditions:
             if condition.get("op"):
                 if not condition.get("conditions"):
                     logger.error("Expected conditions")
-                    raise HTTPException(status_code=500)
+                    raise MalformedTreeException(f"Expected conditions for operator {condition["op"]}")
                 
                 if condition["op"] == "OR":
                     status = status and self._parse_or(condition["conditions"], intake, score, db)
@@ -148,14 +155,14 @@ class RedFlagLayer:
                     status = status and self._parse_and(condition["conditions"], intake, score, db)
                 else:
                     logger.error(f"Unrecognized format: {condition}")
-                    raise HTTPException(status_code=500)
+                    raise MalformedTreeException(f"Unrecognized format: {condition}")
             elif condition.get("helper"):
                 status = status and self._parse_helper(condition, intake, score, db)
             elif condition.get("field"):
                 status = status and self._parse_field(condition, intake)
             else:
                 logger.error(f"Unrecognized format: {condition}")
-                raise HTTPException(status_code=500)
+                raise MalformedTreeException(f"Unrecognized format: {condition}")
 
             if status is False:
                 return status
@@ -166,13 +173,13 @@ class RedFlagLayer:
     def _parse_or(self, conditions: list[dict], intake: IntakeRecord, score: SeverityResult, db: Session) -> bool:
         status = False
         if len(conditions) == 0:
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException("Conditions list exists but is empty")
         
         for condition in conditions:
             if condition.get("op"):
                 if not condition.get("conditions"):
                     logger.error("Expected conditions")
-                    raise HTTPException(status_code=500)
+                    raise MalformedTreeException(f"Expected conditions for operator {condition["op"]}")
                 
                 if condition["op"] == "AND":
                     status = status or self._parse_and(condition["conditions"], intake, score, db)
@@ -180,14 +187,14 @@ class RedFlagLayer:
                     status = status or self._parse_or(condition["conditions"], intake, score, db)
                 else:
                     logger.error(f"Unrecognized format: {condition}")
-                    raise HTTPException(status_code=500)
+                    raise MalformedTreeException(f"Unrecognized format: {condition}")
             elif condition.get("helper"):
                 status = status or self._parse_helper(condition, intake, score, db)
             elif condition.get("field"):
                 status = status or self._parse_field(condition, intake)
             else:
                 logger.error(f"Unrecognized format: {condition}")
-                raise HTTPException(status_code=500)
+                raise MalformedTreeException(f"Unrecognized format: {condition}")
 
             if status is True:
                 return status
@@ -199,11 +206,11 @@ class RedFlagLayer:
         """Validate that a comparison helper has a usable cmp + value."""
         if not helper_info.get("cmp") or helper_info.get("value") is None:
             logger.error(f"cmp and/or value not in helper when helper is {helper_info["helper"]}")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException(f"cmp and/or value not in helper when helper is {helper_info["helper"]}")
 
         if not OPERATORS.get(helper_info["cmp"]):
             logger.error(f"Operator {helper_info["cmp"]} not recognized")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException(f"Operator {helper_info["cmp"]} not recognized")
 
     def _parse_helper(self, helper_info: dict, intake: IntakeRecord, score: SeverityResult, db: Session) -> bool:
         if helper_info["helper"] == "age_in_years":
@@ -213,7 +220,7 @@ class RedFlagLayer:
             patient = db.scalar(stmt)
             if patient is None:
                 logger.error("patient_id wasn't in database when it should be")
-                raise HTTPException(status_code=500)
+                raise RedFlagRetrievalException("patient_id wasn't in database when it should be")
 
             years_age = age_in_years(patient.date_of_birth)
             op_func = OPERATORS[helper_info["cmp"]]
@@ -235,7 +242,7 @@ class RedFlagLayer:
             patient = db.scalar(stmt)
             if patient is None:
                 logger.error("patient_id wasn't in database when it should be")
-                raise HTTPException(status_code=500)
+                raise RedFlagRetrievalException("patient_id wasn't in database when it should be")
 
             days_age = age_in_days(patient.date_of_birth)
             op_func = OPERATORS[helper_info["cmp"]]
@@ -243,22 +250,22 @@ class RedFlagLayer:
 
         else:
             logger.error(f"Unrecognized format: {helper_info}")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException(f"Unrecognized format: {helper_info}")
 
 
     def _parse_field(self, field_info: dict, intake: IntakeRecord) -> bool:
         if not field_info.get("cmp") or field_info.get("value") is None:
             logger.error("cmp and/or value not in field")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException("cmp and/or value not in field")
 
         if not OPERATORS.get(field_info["cmp"]):
             logger.error(f"Operator {field_info["cmp"]} not recognized")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException(f"Operator {field_info["cmp"]} not recognized")
 
 
         if field_info["field"] not in ALLOWED_FIELDS:
             logger.exception(f"Unknown vital {field_info["field"]}")
-            raise HTTPException(status_code=500)
+            raise MalformedTreeException(f"Unknown vital {field_info["field"]}")
         field = getattr(intake, field_info["field"])
         
         if field is None:

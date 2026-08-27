@@ -14,12 +14,14 @@ In an emergency department, minutes matter, and two common failure modes show up
 
 TriageWiseProdrome scores acuity from transparent, weighted rules rather than a model, so every decision traces back to a specific rule and the patient's actual value. Missing data is handled honestly — it lowers confidence instead of guessing. A separate red-flag layer catches atypical "looks-normal-but-isn't" presentations without ever altering the score. Patients are ordered in a priority queue, and each ranking comes with a plain-language explanation. The rule weights, thresholds, and red-flag patterns all live in the database and are grounded in real emergency-department admission rates, so the system can be re-tuned without touching code — and the clinician can override any decision.
 
+Intake submission returns immediately with a `pending` status; scoring runs out-of-band in a separate worker process, and the UI polls until the result is ready.
+
 ## Features
 
 - **Transparent ESI scoring** — weighted vital and complaint rules map to an ESI level (1–5), with ESI-3 refined by expected resource use.
 - **Honest missing-data handling** — per-rule fallbacks, data-completeness tracking, and a confidence downgrade instead of silent guessing.
 - **Red-flag detection** — structured AND/OR trigger trees catch occult presentations, maternal risk, febrile neonates, and early shock. Flags reorder the queue and surface a banner; they never change the score.
-- **Priority queue** — a min-heap keyed on `(ESI band, flag tier, arrival time, intake id)`, re-ordering as records are updated.
+- **Priority queue** — a Postgres-backed queue ordered by `(ESI band, flag tier, arrival time, intake id)`, re-ranked as records are updated or overridden.
 - **Structured 4-part explanation** — every scored patient carries a named-driver breakdown (factor, threshold, actual value, weighted contribution), a data-completeness summary, an explicit gap acknowledgement (what the engine can't see), and a standing clinician-judgment disclaimer.
 - **Plain-language summaries** — a narrative lede and a short risk-level blurb are composed from the stored breakdown at read time, deterministically.
 - **Presentation-mode toggle** — the same scored case renders two ways: full explanation (XAI) or score-and-level only (black-box), with the reasoning stripped at the response layer so it never leaves the server.
@@ -29,22 +31,33 @@ TriageWiseProdrome scores acuity from transparent, weighted rules rather than a 
 
 ## Architecture & tech stack
 
-A FastAPI backend orchestrates three independent services behind a single service layer, with a React frontend and PostgreSQL for storage.
+A FastAPI web app accepts intakes and serves reads; a separate scorer process does the scoring. Both share PostgreSQL, with a React frontend on top.
 
 ```
-Request → TriageService ──> ScoringEngine ──> SeverityResult
-                       │          └──> RedFlagLayer ──> fired flags
-                       └──> PriorityQueue (min-heap)
+POST /patients ──> TriageService.submit_intake ──> intake_record (scoring_status='pending')
+                                                              │
+                        ┌─────────────────────────────────────┘
+                        │  app/scorer.py  (separate process)
+                        │  claims one row: FOR UPDATE SKIP LOCKED
+                        ▼
+                   TriageService.score_intake
+                        ├──> ScoringEngine ──> RedFlagLayer ──> patient_severity
+                        ├──> ExplanationBuilder ──> ai_explanation
+                        └──> triage_queue row        (all in one transaction)
+
+GET /queue ──> single indexed read of triage_queue, ordered by
+               (esi_band, flag_tier, arrival_time, intake_id)
 ```
 
 - **ScoringEngine** — produces a `SeverityResult` (score, ESI, drivers, data-quality signals) from an intake. The red-flag layer is injected into `score()`, so the engine attaches flag metadata to the result without owning flag logic — and the flag layer can be swapped or mocked independently. Flags never change the numeric score.
 - **RedFlagLayer** — evaluates each rule's condition tree and returns fired triggers. Read-only with respect to the score.
-- **PriorityQueue** — in-memory min-heap; sorts on a 4-tuple key, supports insert / reposition / remove / ordered read.
-- **TriageService** — coordinates the services and owns persistence and event logging.
+- **Scorer (worker process)** — claims pending intakes with `FOR UPDATE SKIP LOCKED`. Claim, score, and status write share one transaction: a crash rolls back and the row stays `pending` for the next pass, so there are no stuck rows and no recovery job. The same claim mechanism lets several scorers run concurrently without coordination, so throughput can be increased by starting more of them. The deployment runs a single scorer; there is no autoscaling.
+- **Queue** — persisted in `triage_queue`, ordered by a composite index on `(esi_band, flag_tier, arrival_time, intake_id)`. Rank is a tuple-comparison count, and reads are `LIMIT`-bounded, so queue cost is O(limit) rather than O(n).
+- **TriageService** — coordinates the services and owns persistence and event logging, but not the transaction — the scorer does.
 
 Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, condition base rates) is loaded from CSV into lookup tables and read at runtime — changing a weight or a threshold needs no code change.
 
-**Stack:** Python · FastAPI · SQLAlchemy · Alembic · Pytest · PostgreSQL · React + Vite · deployed on Vercel.
+**Stack:** Python · FastAPI · SQLAlchemy · Alembic · Pytest · PostgreSQL · React + Vite · honcho (web + worker) · deployed on Vercel.
 
 ## Engineering & quality
 
@@ -125,8 +138,8 @@ alembic upgrade head
 # load reference data (scoring rules, red-flag rules, ESI bands, vital ranges, condition base rates)
 python -m scripts.load_reference_data
 
-# run the API
-uvicorn app.main:app --reload
+# run the API + scoring worker
+honcho start -p 8000
 ```
 
 The API serves at `http://localhost:8000`. Interactive docs at `/docs`.

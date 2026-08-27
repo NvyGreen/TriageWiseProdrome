@@ -1,7 +1,7 @@
 {
   "_meta": {
     "title": "TriageWiseProdrome — missing-data fallback cases (reqs 1.2, 1.2-T)",
-    "validates": "ScoringEngine.applyFallback + the four data-quality signals on SeverityResult",
+    "validates": "ScoringEngine.apply_fallback + the four data-quality signals on SeverityResult",
     "how_to_use": "Each case: build the intake with the named fields absent (null / omitted), call score(), assert the score plus missing_fields, fallbacks_applied, data_completeness and confidence.",
     "fallback_rules": {
       "oxygen_saturation": "assume normal, confidence LOW, flag re-measure  -> action: assume_normal",

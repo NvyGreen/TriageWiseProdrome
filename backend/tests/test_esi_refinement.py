@@ -1,4 +1,4 @@
-"""ScoringEngine.refineByResource tests, driven by esi_refinement_test_cases.json.
+"""ScoringEngine.refine_by_resource tests, driven by esi_refinement_test_cases.json.
 
 The second scoring step: an ESI-3 point-band is refined by the complaint's
 resource_level (many -> stays ESI-3, one -> ESI-4, none -> ESI-5); other bands

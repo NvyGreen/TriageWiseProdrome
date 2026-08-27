@@ -24,7 +24,7 @@ class FallbackCodes(StrEnum):
     SKIP_RULE = "skip_rule"
     ASSUME_ZERO = "assume_zero"
 
-incompleteDriver = namedtuple("incompleteDriver", ["rule_id", "factor", "threshold", "unit", "patient_value", "weight", "esi_anchor"])
+IncompleteDriver = namedtuple("IncompleteDriver", ["rule_id", "factor", "threshold", "unit", "patient_value", "weight", "esi_anchor"])
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class ScoringEngine:
         missing_fields = set()
         low_confidence = False
         fallbacks = {}
-        incomplete_drivers: list[incompleteDriver] = []
+        incomplete_drivers: list[IncompleteDriver] = []
 
         for rule in self.rules:
             if rule.rule_type == "vital":
@@ -83,7 +83,7 @@ class ScoringEngine:
                 if check_vital is None:
                     missing_fields.add(field)
                     if field not in fallbacks:
-                        fallback_confidence, fallbacks[field] = self.applyFallback(rule.factor)
+                        fallback_confidence, fallbacks[field] = self.apply_fallback(rule.factor)
                         low_confidence = low_confidence or fallback_confidence
                     continue
 
@@ -94,15 +94,15 @@ class ScoringEngine:
                     if rule.max_bound is None or check_vital <= rule.max_bound:
                         points += rule.weight
                         if rule.units == '%':
-                            incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital}{rule.units}", rule.weight, rule.esi_anchor))
+                            incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital}{rule.units}", rule.weight, rule.esi_anchor))
                         else:
-                            incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital} {rule.units}", rule.weight, rule.esi_anchor))
+                            incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital} {rule.units}", rule.weight, rule.esi_anchor))
                 elif rule.min_bound is None and rule.max_bound is not None and check_vital <= rule.max_bound:
                     points += rule.weight
                     if rule.units == '%':
-                        incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital}{rule.units}", rule.weight, rule.esi_anchor))
+                        incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital}{rule.units}", rule.weight, rule.esi_anchor))
                     else:
-                        incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital} {rule.units}", rule.weight, rule.esi_anchor))
+                        incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital} {rule.units}", rule.weight, rule.esi_anchor))
 
             elif rule.rule_type == "complaint":
                 if intake.chief_complaint is None:
@@ -111,7 +111,7 @@ class ScoringEngine:
                     points += rule.weight
                     # An intake can only ever have one chief complaint, so this will only trigger once
                     resource_level = rule.resource_level
-                    incomplete_drivers.append(incompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, intake.chief_complaint, rule.weight, rule.esi_anchor))
+                    incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, intake.chief_complaint, rule.weight, rule.esi_anchor))
                 
         if len(incomplete_drivers) == 0:
             raise CannotScoreException("The intake is valid but cannot be scored")
@@ -128,7 +128,7 @@ class ScoringEngine:
         else:
             initial_esi = ESILevels.ESI_5
         
-        refined, esi_level = self.refineByResource(initial_esi, resource_level)
+        refined, esi_level = self.refine_by_resource(initial_esi, resource_level)
 
         drivers: list[Driver] = []
         for incomplete_driver in incomplete_drivers:
@@ -223,7 +223,7 @@ class ScoringEngine:
         return severity_id, result
 
 
-    def applyFallback(self, field):
+    def apply_fallback(self, field):
         for rule in self.rules:
             if rule.factor == field:
                 if rule.scoring_action not in FallbackCodes:
@@ -234,7 +234,7 @@ class ScoringEngine:
         raise CannotScoreException("Could not find matching rule")
     
 
-    def refineByResource(self, band: str, resource_level: str):
+    def refine_by_resource(self, band: str, resource_level: str):
         if resource_level is None:
             raise CannotScoreException("resource_level cannot be missing")
 

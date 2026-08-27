@@ -89,9 +89,9 @@ class SeverityNotFoundError(Exception):
 class TriageService:
     def __init__(self, db: Session):
         self.db = db
-        self.scoringEngine = ScoringEngine(db)
-        self.redFlagLayer = RedFlagLayer(db)
-        self.explanationBuilder = ExplanationBuilder(db)
+        self.scoring_engine = ScoringEngine(db)
+        self.red_flag_layer = RedFlagLayer(db)
+        self.explanation_builder = ExplanationBuilder(db)
 
     def _db_queue_position(self, esi_band, flag_tier, arrival_time, intake_id) -> int:
         # Position in the persisted queue: 1 + rows ranked strictly ahead by the
@@ -113,10 +113,10 @@ class TriageService:
         )
         return ahead + 1
 
-    def submitIntake(self, intake: IntakeCreate) -> dict:
+    def submit_intake(self, intake: IntakeCreate) -> dict:
         """Fast path: persist the patient + intake as `pending` and return
         {intake_id, status}. Scoring, red flags, the queue row and the explanation
-        run out-of-band in scoreIntake(); the caller commits, then schedules it."""
+        run out-of-band in score_intake(); the caller commits, then schedules it."""
         try:
             new_patient = Patient(
                 name=intake.name,
@@ -158,7 +158,7 @@ class TriageService:
             raise HTTPException(status_code=500) from e
 
 
-    def scoreIntake(self, intake_id: int) -> None:
+    def score_intake(self, intake_id: int) -> None:
         """Pure scoring — no transaction ownership. Computes severity, logs events,
         inserts the queue row, builds the explanation, then flushes. Does NOT
         commit, roll back, or set scoring_status: the caller (app/scorer.py) owns
@@ -167,49 +167,49 @@ class TriageService:
         IntegrityError). No-op if the intake row is gone."""
         intake = self.db.get(IntakeRecord, intake_id)
         if intake is None:
-            logger.error("scoreIntake: intake %s not found", intake_id)
+            logger.error("score_intake: intake %s not found", intake_id)
             return
 
         patient_id = intake.patient_id
-        severity_id, severityResult = self.scoringEngine.score(intake, self.redFlagLayer, self.db)
+        severity_id, severity_result = self.scoring_engine.score(intake, self.red_flag_layer, self.db)
 
         self.db.add(EventLog(
             event_type=EventType.SCORE_CALCULATED,
             patient_id=patient_id,
             intake_id=intake_id,
-            details={"esi": severityResult.esi_level, "score": severityResult.severity_score}
+            details={"esi": severity_result.esi_level, "score": severity_result.severity_score}
         ))
 
-        if severityResult.flag_tier < 3:
+        if severity_result.flag_tier < 3:
             self.db.add(EventLog(
                 event_type=EventType.RED_FLAG_FIRED,
                 patient_id=patient_id,
                 intake_id=intake_id,
-                details={"flags": severityResult.red_flag_ids}
+                details={"flags": severity_result.red_flag_ids}
             ))
 
-        esi_num = int(severityResult.esi_level[-1])
+        esi_num = int(severity_result.esi_level[-1])
         self.db.add(TriageQueue(
             patient_id=patient_id,
             intake_id=intake_id,
             severity_id=severity_id,
             esi_band=esi_num,
-            flag_tier=severityResult.flag_tier,
+            flag_tier=severity_result.flag_tier,
             arrival_time=intake.created_at,
         ))
         self.db.add(EventLog(
             event_type=EventType.QUEUED,
             patient_id=patient_id,
             intake_id=intake_id,
-            details={"esi": severityResult.esi_level, "flag_tier": severityResult.flag_tier}
+            details={"esi": severity_result.esi_level, "flag_tier": severity_result.flag_tier}
         ))
         
-        self.explanationBuilder.build(severityResult, intake)
+        self.explanation_builder.build(severity_result, intake)
         self.db.flush()
 
     def set_scoring_status(self, intake_id: int, scoring_status: ScoringStatus) -> None:
         """Record a terminal scoring_status in the caller's transaction (no commit).
-        The scorer commits. Used after scoreIntake to mark SCORED / UNSCOREABLE /
+        The scorer commits. Used after score_intake to mark SCORED / UNSCOREABLE /
         FAILED."""
         self.db.execute(
             update(IntakeRecord)
@@ -218,7 +218,7 @@ class TriageService:
         )
 
 
-    def getQueue(self, limit: int = 500) -> list[QueueEntry]:
+    def get_queue(self, limit: int = 500) -> list[QueueEntry]:
         # Read from triage_queue (the persisted source of truth), ordered by the
         # sort key, excluding dispositioned patients. A clinician ESI overrides the
         # system one for display; the band join uses whichever wins.
@@ -277,7 +277,7 @@ class TriageService:
         return entries
     
 
-    def updatePatient(self, intake_id: int, updates: IntakeUpdate) -> Result:
+    def update_patient(self, intake_id: int, updates: IntakeUpdate) -> Result:
         # Get all necessary records
         try:
             intake = self.db.get(IntakeRecord, intake_id)
@@ -398,36 +398,36 @@ class TriageService:
 
             if updated_vitals:
                 # The vitals changed, so the completeness list is stale — re-derive
-                # it from the updated intake before re-scoring (mirrors submitIntake).
+                # it from the updated intake before re-scoring (mirrors submit_intake).
                 intake.missing_fields = [field for field in VITAL_FIELDS if getattr(intake, field) is None]
 
                 # Re-score and re-queue based on these values
                 old_esi = severity.clinician_ESI if severity.clinician_ESI is not None else severity.system_ESI
                 old_flag_tier = severity.flag_tier
 
-                _, severityResult = self.scoringEngine.score(intake, self.redFlagLayer, self.db)
-                severity_score = severityResult.severity_score
+                _, severity_result = self.scoring_engine.score(intake, self.red_flag_layer, self.db)
+                severity_score = severity_result.severity_score
                 score_calculated = EventLog(
                     event_type=EventType.SCORE_CALCULATED,
                     patient_id=patient_id,
                     intake_id=intake_id,
                     details={
-                        "esi": severityResult.esi_level,
-                        "score": severityResult.severity_score
+                        "esi": severity_result.esi_level,
+                        "score": severity_result.severity_score
                     }
                 )
                 self.db.add(score_calculated)
 
-                if severityResult.flag_tier < 3:
+                if severity_result.flag_tier < 3:
                     red_flag_fired = EventLog(
                         event_type=EventType.RED_FLAG_FIRED,
                         patient_id=patient_id,
                         intake_id=intake_id,
-                        details = {"flags": severityResult.red_flag_ids}
+                        details = {"flags": severity_result.red_flag_ids}
                     )
                     self.db.add(red_flag_fired)
 
-                esi_num = int(severityResult.esi_level[-1])
+                esi_num = int(severity_result.esi_level[-1])
 
                 # Persisted queue: read position BEFORE the change (queue_record
                 # still holds the old band/tier), then apply the change and recompute.
@@ -436,9 +436,9 @@ class TriageService:
                     queue_record.arrival_time, intake_id,
                 )
                 queue_record.esi_band = esi_num
-                queue_record.flag_tier = severityResult.flag_tier
+                queue_record.flag_tier = severity_result.flag_tier
                 new_position = self._db_queue_position(
-                    esi_num, severityResult.flag_tier,
+                    esi_num, severity_result.flag_tier,
                     queue_record.arrival_time, intake_id,
                 )
                 if old_position != new_position:
@@ -449,12 +449,12 @@ class TriageService:
                         details={
                             "old_esi": old_esi,
                             "old_flag_tier": old_flag_tier,
-                            "new_esi": severityResult.esi_level,
-                            "new_flag_tier": severityResult.flag_tier
+                            "new_esi": severity_result.esi_level,
+                            "new_flag_tier": severity_result.flag_tier
                         }
                     )
                     self.db.add(reprioritized)
-                self.explanationBuilder.build(severityResult, intake)
+                self.explanation_builder.build(severity_result, intake)
 
                 case_update = CaseUpdate(patient_id=patient_id, intake_id=intake_id, updated_vitals=updated_vitals)
                 new_event = EventLog(
@@ -492,7 +492,7 @@ class TriageService:
             raise UnscoreableException()
 
 
-    def getPatientDetail(self, intake_id: int) -> PatientDetail:
+    def get_patient_detail(self, intake_id: int) -> PatientDetail:
         try:
             intake = self.db.get(IntakeRecord, intake_id)
             if intake is None:
@@ -605,7 +605,7 @@ class TriageService:
         risk_blurb = self._render_risk_blurb(severity, ai_explanation)
 
         try:
-            # applyOverride inserts a new row each time, so pick the most recent
+            # apply_override inserts a new row each time, so pick the most recent
             # (override_id breaks a same-transaction created_at tie).
             stmt = (
                 select(Override)
@@ -642,7 +642,7 @@ class TriageService:
         )
 
 
-    def applyOverride(self, severity_id: int, clinician_esi: str, reason_code: ReasonCode, note: str | None) -> Result:
+    def apply_override(self, severity_id: int, clinician_esi: str, reason_code: ReasonCode, note: str | None) -> Result:
         try:
             severity = self.db.get(PatientSeverity, severity_id)
             if severity is None:
@@ -788,7 +788,7 @@ class TriageService:
 
         score_line = f"System suggests: {severity.system_ESI}\nClinician score: {severity.clinician_ESI}"
         try:
-            # applyOverride inserts a new row each time, so pick the most recent
+            # apply_override inserts a new row each time, so pick the most recent
             # (override_id breaks a same-transaction created_at tie).
             stmt = (
                 select(Override)

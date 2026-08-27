@@ -10,7 +10,7 @@ Validate the engine's ESI output against independent clinician labels on 20 hand
 
 - 20 synthetic cases spanning all five ESI bands, each a complete intake (chief complaint + vitals + history).
 - Each case carries a `clinician_esi` ground-truth label assigned by clinician review **independently of the engine** — labels were set without seeing engine output.
-- Every case is scored through the full pipeline (`submitIntake` → scoring → refinement) and the engine's system ESI is compared to the clinician label. Exact-band match only.
+- Every case is scored through the full pipeline (`submitsubmit_intakeIntake` → scoring → refinement) and the engine's system ESI is compared to the clinician label. Exact-band match only.
 
 ## Independence
 

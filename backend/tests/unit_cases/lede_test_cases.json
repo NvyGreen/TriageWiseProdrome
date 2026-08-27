@@ -1,8 +1,8 @@
 {
   "_meta": {
     "title": "TriageWiseProdrome — lede rendering cases (req 1.9)",
-    "validates": "The lede render step (in getPatientDetail / TriageService) — structured stored data -> the summary sentence(s) at the top of the patient detail. Deterministic: same inputs -> identical text.",
-    "nature": "The lede is built at read time from STORED data, NOT from a live SeverityResult. Inputs mirror what getPatientDetail actually reads: patient_severity fields + ai_explanation.factor_breakdown + ai_explanation.data_completeness.",
+    "validates": "The lede render step (in get_patient_detail / TriageService) — structured stored data -> the summary sentence(s) at the top of the patient detail. Deterministic: same inputs -> identical text.",
+    "nature": "The lede is built at read time from STORED data, NOT from a live SeverityResult. Inputs mirror what get_patient_detail actually reads: patient_severity fields + ai_explanation.factor_breakdown + ai_explanation.data_completeness.",
     "how_to_use": "For each case: feed inputs to _render_lede, assert the output EQUALS expected_lede exactly (deterministic). Component fields (score, esi, band_name, n_vital, vital_clause) are provided for targeted assertions but expected_lede is the source of truth.",
     "inputs_shape": {
       "from_patient_severity": "severity_score (int), system_ESI (e.g. 'ESI-3'), fallbacks_applied (list; read for the non-5/5 tail)",

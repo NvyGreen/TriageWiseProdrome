@@ -134,7 +134,7 @@
     },
     {
       "_name": "drivers_trace_to_fired_rules_only",
-      "_why": "namedDrivers must contain one Driver per fired rule, each with the patient's actual value — no invented drivers.",
+      "_why": "named_drivers must contain one Driver per fired rule, each with the patient's actual value — no invented drivers.",
       "intake": {"chief_complaint": "abdominal", "heart_rate": 124, "blood_pressure_systolic": 118, "oxygen_saturation": 96, "respiration_rate": 18, "pain_level": 8},
       "expect": {
         "fired_rules": [14, 3, 9],

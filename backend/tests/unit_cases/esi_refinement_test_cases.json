@@ -1,7 +1,7 @@
 {
   "_meta": {
     "title": "TriageWiseProdrome — ESI-3 resource refinement cases (reqs 1.4, 1.28, 1.4-T)",
-    "validates": "ScoringEngine.refineByResource — the second step after point-banding",
+    "validates": "ScoringEngine.refine_by_resource — the second step after point-banding",
     "how_to_use": "Each case: build the intake, call score(), assert initial_esi, resource_level, final esi_band, and the 'refined' flag.",
     "rule": [
       "Refinement applies ONLY when the point-banded result is ESI-3 (3-5 points).",
@@ -226,7 +226,7 @@
     },
     {
       "_name": "initial_esi_preserved_after_refinement",
-      "_why": "initialEsi must still read 3 after the result moves to 4 — the explanation needs both.",
+      "_why": "initial_esi must still read 3 after the result moves to 4 — the explanation needs both.",
       "intake": {
         "chief_complaint": "minor_injury",
         "heart_rate": 124,

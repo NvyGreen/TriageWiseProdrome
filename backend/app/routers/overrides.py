@@ -32,7 +32,7 @@ def override_system(
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=64)
 ):
-    triageService = TriageService(db)
+    triage_service = TriageService(db)
     request_hash = hash_payload(override)
     existing = check_idempotency(idempotency_key, request_hash, db)
     if existing is not None:
@@ -41,7 +41,7 @@ def override_system(
         # response class (all stored responses are 201 successes).
         return existing.response_body
     
-    result = triageService.applyOverride(override.severity_id, override.clinician_esi, override.reason_code, override.note)
+    result = triage_service.apply_override(override.severity_id, override.clinician_esi, override.reason_code, override.note)
     response_body = {
         "message": "Override applied successfully",
         "intake_id": result.intake_id,

@@ -23,8 +23,8 @@ def test_intakes():
 
 @router.patch("/{intake_id}", status_code=status.HTTP_200_OK)
 def update_patient(intake_id: int, updates: IntakeUpdate, db: Session = Depends(get_db)):
-    triageService = TriageService(db)
-    result = triageService.updatePatient(intake_id, updates)
+    triage_service = TriageService(db)
+    result = triage_service.update_patient(intake_id, updates)
     response_body = {
         "message": "Patient updated successfully",
         "intake_id": result.intake_id,
@@ -43,7 +43,7 @@ def update_patient(intake_id: int, updates: IntakeUpdate, db: Session = Depends(
 
 @router.get("/{intake_id}", status_code=status.HTTP_200_OK)
 def patient_details(intake_id: int, mode: Annotated[Literal['xai', 'blackbox'], Query()], db: Session = Depends(get_db)):
-    triageService = TriageService(db)
+    triage_service = TriageService(db)
 
     # The intake exists before scoring produces a result. Until it's SCORED there's
     # no severity/explanation to render, so return {intake_id, status} and let the
@@ -54,7 +54,7 @@ def patient_details(intake_id: int, mode: Annotated[Literal['xai', 'blackbox'], 
     if intake.scoring_status != ScoringStatus.SCORED:
         return {"intake_id": intake_id, "status": intake.scoring_status}
 
-    details = triageService.getPatientDetail(intake_id)
+    details = triage_service.get_patient_detail(intake_id)
     try:
         if mode == 'xai':
             explanation_viewed = EventLog(

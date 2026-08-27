@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "title": "TriageWiseProdrome — applyOverride cases (req R4 + R2 queue effect)",
-    "validates": "TriageService.applyOverride(severity_id, clinician_esi, reason_code, note, queue) -> Result. Persists override, sets clinician_ESI, fires override_applied, repositions queue + fires reprioritized ON REAL MOVEMENT, returns Result.",
-    "nature": "INTEGRATION. Seed a scored patient (+ patient_severity) and a pre-populated queue, call applyOverride, assert: Result, clinician_ESI mutation, override row, events, queue movement. Queue must be pre-seeded with fillers so movement (or non-movement) is deterministic.",
+    "title": "TriageWiseProdrome — apply_override cases (req R4 + R2 queue effect)",
+    "validates": "TriageService.apply_override(severity_id, clinician_esi, reason_code, note, queue) -> Result. Persists override, sets clinician_ESI, fires override_applied, repositions queue + fires reprioritized ON REAL MOVEMENT, returns Result.",
+    "nature": "INTEGRATION. Seed a scored patient (+ patient_severity) and a pre-populated queue, call apply_override, assert: Result, clinician_ESI mutation, override row, events, queue movement. Queue must be pre-seeded with fillers so movement (or non-movement) is deterministic.",
     "key_behaviors": [
       "old_esi = clinician_ESI if a prior override exists, else system_ESI (guards double-override).",
       "override.system_ESI always records the ORIGINAL system value, even on re-override.",
@@ -101,7 +101,7 @@
     },
     {
       "_name": "override_same_band_no_reprioritized",
-      "_why": "Patient is alone in the queue (or clinician_esi keeps the same ordering slot). updatePatientPosition returns old == new -> reprioritized does NOT fire. override_applied still fires; clinician_ESI still set; Result returned.",
+      "_why": "Patient is alone in the queue (or clinician_esi keeps the same ordering slot). update_patient_position returns old == new -> reprioritized does NOT fire. override_applied still fires; clinician_ESI still set; Result returned.",
       "seed": {
         "patient": {
           "patient_id": 201,

@@ -85,7 +85,7 @@ def _seed_queued(db_session, queue, chief_complaint, esi_band, arrival, **vitals
     severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI=f"ESI-{esi_band}")
     db_session.add(severity)
     db_session.flush()
-    # A queued intake also has a triage_queue row — updatePatient reads/updates it.
+    # A queued intake also has a triage_queue row — update_patient reads/updates it.
     db_session.add(TriageQueue(
         patient_id=patient.patient_id, intake_id=intake.intake_id,
         severity_id=severity.severity_id, esi_band=esi_band, flag_tier=3,

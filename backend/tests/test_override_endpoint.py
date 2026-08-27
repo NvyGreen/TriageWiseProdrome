@@ -1,6 +1,6 @@
 """HTTP-layer tests for POST /overrides/, driven by override_endpoint_test_cases.json.
 
-Distinct from test_apply_override.py (the applyOverride SERVICE method) — here we
+Distinct from test_apply_override.py (the apply_override SERVICE method) — here we
 assert the endpoint contract: status codes, error envelopes, the response body,
 idempotency (replay / conflict / expiry), and validation normalization.
 
@@ -16,7 +16,7 @@ Wiring notes from the sweep:
     deliberately different hash.
   - The endpoint reaches the queue via Depends(get_queue); `override_queue` swaps
     a fresh queue onto overrides_app and the target intake is inserted for cases
-    that actually run applyOverride (else updatePatientPosition raises).
+    that actually run apply_override (else update_patient_position raises).
   - Success/replay bodies are wrapped under "payload" by MedicalDisclaimerResponse.
 """
 import json
@@ -153,7 +153,7 @@ def test_override_endpoint(case, client, db_session, override_queue):
     for entry in (seed.get("queue_seed", []) if seed else []):
         band = int(entry["esi"][-1])
         override_queue.insert(band, entry["flag_tier"], _at("10:00"), real_intake_id)
-        # applyOverride reads the queue row from triage_queue; commit it so the
+        # apply_override reads the queue row from triage_queue; commit it so the
         # endpoint's own session sees it.
         db_session.add(TriageQueue(
             patient_id=intake.patient_id, intake_id=real_intake_id,

@@ -1,11 +1,11 @@
-"""Service-level tests for TriageService.getQueue.
+"""Service-level tests for TriageService.get_queue.
 
-getQueue now reads the persisted queue from triage_queue, joined to Patient ->
+get_queue now reads the persisted queue from triage_queue, joined to Patient ->
 PatientSeverity -> ESIBand, ordered by (esi_band, flag_tier, arrival_time,
 intake_id) and excluding dispositioned patients. So these seed real triage_queue
 rows (not the in-memory heap).
 
-The test DB persists across tests, and getQueue counts the whole table, so the
+The test DB persists across tests, and get_queue counts the whole table, so the
 autouse fixture clears triage_queue first — otherwise leftover rows leak into
 order/empty assertions.
 """
@@ -21,7 +21,7 @@ from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import TriageService
 from app.utils.dates import age_in_years
 
-# getQueue ignores the PriorityQueue arg now (reads the DB), but the signature
+# get_queue ignores the PriorityQueue arg now (reads the DB), but the signature
 # still takes one, so hand it a throwaway.
 _UNUSED_QUEUE = PriorityQueue()
 
@@ -66,14 +66,14 @@ def _make_queued(db_session, name, esi_band=3, flag_tier=3, arrival="10:00",
 
 
 def test_empty_queue_returns_no_entries(db_session):
-    assert TriageService(db_session).getQueue() == []
+    assert TriageService(db_session).get_queue() == []
 
 
 def test_single_entry_has_patient_details(db_session):
     dob = date(1975, 3, 14)
     patient, intake = _make_queued(db_session, "Solo Patient", esi_band=3, dob=dob)
 
-    entries = TriageService(db_session).getQueue()
+    entries = TriageService(db_session).get_queue()
 
     assert len(entries) == 1
     entry = entries[0]
@@ -90,7 +90,7 @@ def test_severity_fields_populated(db_session):
     """A queued intake is always scored, so severity-derived fields are present."""
     _make_queued(db_session, "Scored Patient", esi_band=2, flag_tier=1)
 
-    entry = TriageService(db_session).getQueue()[0]
+    entry = TriageService(db_session).get_queue()[0]
     assert entry.esi_level == "ESI-2"
     assert entry.priority_label is not None
     assert entry.severity_score == 5
@@ -101,7 +101,7 @@ def test_clinician_esi_takes_precedence_in_display(db_session):
     """esi_level shows the clinician override when present (coalesce)."""
     _make_queued(db_session, "Overridden", esi_band=1, clinician_esi="ESI-1")
 
-    entry = TriageService(db_session).getQueue()[0]
+    entry = TriageService(db_session).get_queue()[0]
     assert entry.esi_level == "ESI-1"
 
 
@@ -110,7 +110,7 @@ def test_entries_follow_queue_order(db_session):
     _, second = _make_queued(db_session, "Band One", esi_band=1, arrival="10:01")
     _, third = _make_queued(db_session, "Band Two", esi_band=2, arrival="10:02")
 
-    entries = TriageService(db_session).getQueue()
+    entries = TriageService(db_session).get_queue()
 
     assert [e.intake_id for e in entries] == [
         second.intake_id, third.intake_id, first.intake_id,
@@ -122,6 +122,6 @@ def test_dispositioned_excluded(db_session):
     _, waiting = _make_queued(db_session, "Still Waiting", esi_band=2)
     _make_queued(db_session, "Gone", esi_band=1, status="DISPOSITIONED")
 
-    entries = TriageService(db_session).getQueue()
+    entries = TriageService(db_session).get_queue()
 
     assert [e.intake_id for e in entries] == [waiting.intake_id]

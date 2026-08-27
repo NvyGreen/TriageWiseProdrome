@@ -6,11 +6,11 @@ clinician label, build the queue, then assert the queue ranks by clinician ESI:
 for any pair (A, B) with A more acute than B, A must sit ahead of B.
 
 Harness notes (confirmed against the code):
-  - The method is submitIntake(intake, queue) (not submitPatient).
-  - submitIntake/Result don't return severity_id or the system ESI, so we look up
+  - The method is submit_intake(intake, queue) (not submitPatient).
+  - submit_intake/Result don't return severity_id or the system ESI, so we look up
     PatientSeverity by the returned intake_id to decide disagreement and to call
-    applyOverride.
-  - applyOverride needs a reason_code; the dataset has none, so we pass
+    apply_override.
+  - apply_override needs a reason_code; the dataset has none, so we pass
     ReasonCode.OTHER — only the band matters here.
   - case_id / clinician_esi aren't IntakeCreate fields; we strip them, add a name,
     and resolve `_dob_days_ago_N` to N days before today.
@@ -61,7 +61,7 @@ def _build_intake(case: dict) -> IntakeCreate:
 def test_clinician_override_ranking(db_session):
     service = TriageService(db_session)
 
-    # Isolate the persisted queue — getQueue reads the whole triage_queue table.
+    # Isolate the persisted queue — get_queue reads the whole triage_queue table.
     db_session.query(TriageQueue).delete()
     db_session.commit()
 
@@ -72,24 +72,24 @@ def test_clinician_override_ranking(db_session):
         cid = case["case_id"]
         clinician_esi[cid] = case["clinician_esi"]
 
-        intake_id = service.submitIntake(_build_intake(case))["intake_id"]
+        intake_id = service.submit_intake(_build_intake(case))["intake_id"]
         # Scoring is out-of-band; at the service level nothing schedules it, so run
         # it directly to produce the severity + queue row.
-        service.scoreIntake(intake_id)
+        service.score_intake(intake_id)
 
         severity = db_session.scalar(
             select(PatientSeverity).where(PatientSeverity.intake_id == intake_id)
         )
         # Override only where the engine disagrees with the clinician label.
         if severity.system_ESI != case["clinician_esi"]:
-            service.applyOverride(
+            service.apply_override(
                 severity.severity_id, case["clinician_esi"], ReasonCode.OTHER, None
             )
 
         intake_id_of[cid] = intake_id
 
     # Position of each case in the finished queue.
-    entries = service.getQueue()
+    entries = service.get_queue()
     position_by_intake = {e.intake_id: e.position for e in entries}
     position = {cid: position_by_intake[iid] for cid, iid in intake_id_of.items()}
 

@@ -11,6 +11,7 @@ case_update / severity rows cascade) plus the intake idempotency key (the edit
 PATCH carries no key).
 """
 import re
+import time
 
 from playwright.sync_api import Page, expect
 
@@ -37,10 +38,16 @@ def test_edit_fills_missing_vitals(page: Page, db_cleanup):
     page.click("button[type='submit']")
     expect(page.locator("li", has_text="Intake ID:")).to_be_visible()
 
-    # 2. Queue -> open the patient's detail.
+    # 2. Queue -> open the patient's detail. Scoring is async and the queue fetches
+    #    on mount, so reload until the scored patient's row appears before opening it.
     page.get_by_role("link", name="Triage Queue").click()
     expect(page.locator("h1", has_text="Triage Queue")).to_be_visible()
-    page.locator("a.namelink", has_text=PATIENT_NAME).click()
+    name_link = page.locator("a.namelink", has_text=PATIENT_NAME)
+    deadline = time.monotonic() + 15
+    while name_link.count() == 0 and time.monotonic() < deadline:
+        time.sleep(0.5)
+        page.reload()
+    name_link.click()
     expect(page.locator("a.editbtn")).to_be_visible()  # detail loaded
 
     # 3. Detail -> Edit Patient.

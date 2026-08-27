@@ -5,9 +5,12 @@ navigate to the queue via the navbar, assert they're ordered most-acute first,
 then disposition the middle one and assert it drops out of the active queue.
 
 Isolation: the `backend` fixture is module-scoped, so this file gets a FRESH
-backend with an empty in-memory queue — the three patients here are the only
-entries. `db_cleanup` removes the ZZTEST rows + idempotency keys; the orphaned
-queue entries die with the module's backend process.
+backend + scorer against the `_e2e` DB. `db_cleanup` removes the ZZTEST rows +
+idempotency keys after the test, so the three patients here are the only entries.
+
+Scoring is async: submit returns `pending`, and the separate scorer process fills
+the queue a moment later. The queue page fetches once on mount (no auto-poll), so
+the test reloads it until the three scored rows appear before asserting.
 """
 from playwright.sync_api import Page, expect
 
@@ -47,6 +50,19 @@ def _row_order(page: Page) -> list[str]:
     return [t for t in texts if "ZZTEST Queue" in t]
 
 
+def _wait_for_queue_rows(page: Page, count: int, timeout_s: float = 15.0) -> None:
+    """Scoring is async and the queue fetches only on mount, so reload until the
+    expected number of rows appears (or time out)."""
+    import time
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if page.locator("tbody tr").count() == count:
+            return
+        time.sleep(0.5)
+        page.reload()
+    # Fall through: let the caller's to_have_count assertion produce the failure.
+
+
 def test_queue_orders_and_dispositions(page: Page, db_cleanup):
     def on_request(r):
         if r.method == "POST" and "/patients/" in r.url:
@@ -60,9 +76,11 @@ def test_queue_orders_and_dispositions(page: Page, db_cleanup):
     for name, complaint, vitals in PATIENTS:
         _submit_intake(page, name, complaint, vitals)
 
-    # 2. Navigate to the queue via the navbar; the three should load in order.
+    # 2. Navigate to the queue via the navbar; reload until the scorer has filled
+    #    it (submit is async), then assert the three loaded in order.
     page.get_by_role("link", name="Triage Queue").click()
     expect(page.locator("h1", has_text="Triage Queue")).to_be_visible()
+    _wait_for_queue_rows(page, 3)
     rows = page.locator("tbody tr")
     expect(rows).to_have_count(3)
 

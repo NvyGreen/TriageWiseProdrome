@@ -8,6 +8,8 @@ Isolation: the module-scoped `backend` fixture gives this file a fresh, empty
 queue. `db_cleanup` removes the ZZTEST patient (its Override rows cascade) plus
 the captured idempotency keys (one intake + two overrides).
 """
+import time
+
 from playwright.sync_api import Page, expect
 
 FRONTEND_URL = "http://localhost:5173"
@@ -53,12 +55,19 @@ def test_override_more_then_less_acute(page: Page, db_cleanup):
     _submit_intake(page)
 
     # 2. Queue -> click the patient's name -> detail page (wait for its load).
+    #    Scoring is async and the queue fetches on mount, so reload until the
+    #    scored patient's row appears before opening it.
     page.get_by_role("link", name="Triage Queue").click()
     expect(page.locator("h1", has_text="Triage Queue")).to_be_visible()
+    name_link = page.locator("a.namelink", has_text=PATIENT_NAME)
+    deadline = time.monotonic() + 15
+    while name_link.count() == 0 and time.monotonic() < deadline:
+        time.sleep(0.5)
+        page.reload()
     with page.expect_response(
         lambda r: r.request.method == "GET" and "/intakes/" in r.url and "mode=" in r.url
     ) as detail_resp:
-        page.locator("a.namelink", has_text=PATIENT_NAME).click()
+        name_link.click()
     assert detail_resp.value.status == 200
     expect(page.locator("select[name='clinician_esi']")).to_be_visible()
 

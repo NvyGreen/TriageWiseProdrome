@@ -58,6 +58,7 @@ def test_valid_intake_succeeds(page: Page, db_cleanup):
 
     page.click("button[type='submit']")
 
-    # Success feedback (success branch is the only one that shows "Intake ID:").
+    # Async submit: the success branch confirms the intake was accepted (Intake ID)
+    # and is queued for out-of-band scoring — no score is returned at submit time.
     expect(page.locator("li", has_text="Intake ID:")).to_be_visible()
-    expect(page.locator("li", has_text="Severity score:")).to_be_visible()
+    expect(page.locator("li", has_text="Queued for scoring")).to_be_visible()

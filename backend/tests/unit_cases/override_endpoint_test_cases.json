@@ -1,13 +1,13 @@
 {
   "_meta": {
     "title": "TriageWiseProdrome — override ENDPOINT cases (POST /overrides/, req R4 + idempotency 1.1b-style)",
-    "validates": "POST /overrides/ HTTP contract: status codes, response body, idempotency (replay/conflict/expiry), and validation. Distinct from override_test_cases.json, which tests the applyOverride SERVICE method.",
+    "validates": "POST /overrides/ HTTP contract: status codes, response body, idempotency (replay/conflict/expiry), and validation. Distinct from override_test_cases.json, which tests the apply_override SERVICE method.",
     "nature": "INTEGRATION at the HTTP layer. Seed rows (+ optionally a pre-existing idempotency_key row and a queue), send the request with headers+body, assert the emitted response and the persisted side effects.",
     "layer_note": "This is the ENDPOINT layer. Domain-object assertions (Result fields, Driver/Trigger types) belong in override_test_cases.json. Here: status_code, error envelopes, response body dict, idempotency behavior.",
     "idempotency_contract": [
       "No Idempotency-Key header -> 400 invalid_input (IdempotencyKeyRequiredException).",
       "Key present, no stored row (or expired) -> execute normally, then store/upsert the key.",
-      "Key present, stored row within TTL, SAME payload hash -> replay stored response_body verbatim (201), skip applyOverride.",
+      "Key present, stored row within TTL, SAME payload hash -> replay stored response_body verbatim (201), skip apply_override.",
       "Key present, stored row within TTL, DIFFERENT payload hash -> 409 duplicate_request.",
       "hash_payload = SHA-256 of the canonicalized validated OverrideCreate (sorted keys, no whitespace).",
       "TTL = 24h, enforced at read against created_at; past-TTL keys are treated as absent and upserted."
@@ -121,9 +121,9 @@
         "body_equals_stored": true,
         "no_new_override_row": true,
         "no_new_events": true,
-        "applyOverride_not_called": true
+        "apply_override_not_called": true
       },
-      "_note": "request_hash must equal hash_payload(OverrideCreate(body)). The stored body is replayed as-is; applyOverride is skipped entirely."
+      "_note": "request_hash must equal hash_payload(OverrideCreate(body)). The stored body is replayed as-is; apply_override is skipped entirely."
     },
     {
       "_name": "post_override_409_key_reused_different_body",
@@ -209,7 +209,7 @@
     },
     {
       "_name": "post_override_404_severity_not_found",
-      "_why": "Valid body + key, but severity_id doesn't exist -> SeverityNotFoundError -> 404 not_found. (Key check passes first; the 404 comes from applyOverride.)",
+      "_why": "Valid body + key, but severity_id doesn't exist -> SeverityNotFoundError -> 404 not_found. (Key check passes first; the 404 comes from apply_override.)",
       "seed": {},
       "request": {
         "headers": {
@@ -228,7 +228,7 @@
         "error_message": "No severity with that id.",
         "no_override_row": true
       },
-      "_note": "Ordering: missing-key (400) is checked BEFORE severity lookup. Here the key is present, so we reach applyOverride and get 404."
+      "_note": "Ordering: missing-key (400) is checked BEFORE severity lookup. Here the key is present, so we reach apply_override and get 404."
     },
     {
       "_name": "post_override_invalid_reason_code",
@@ -322,7 +322,7 @@
     },
     {
       "_name": "post_override_expired_key_reexecutes",
-      "_why": "Idempotency-Key exists but its created_at is older than IDEMPOTENCY_TTL (24h) -> check_idempotency treats it as absent -> applyOverride runs fresh; store_idempotency UPSERTS, resetting created_at.",
+      "_why": "Idempotency-Key exists but its created_at is older than IDEMPOTENCY_TTL (24h) -> check_idempotency treats it as absent -> apply_override runs fresh; store_idempotency UPSERTS, resetting created_at.",
       "seed": {
         "patient_severity": {
           "severity_id": 8009,
@@ -366,7 +366,7 @@
       },
       "expect": {
         "status_code": 201,
-        "applyOverride_called": true,
+        "apply_override_called": true,
         "override_persisted": true,
         "idempotency_row_upserted": true,
         "created_at_reset": true

@@ -16,7 +16,7 @@ class NaiveListQueue:
         self.queue.append(row)
     
 
-    def updatePatientPosition(self, intake_id: int, esi_band: int, flag_tier: int):
+    def update_patient_position(self, intake_id: int, esi_band: int, flag_tier: int):
         update_index = -1
         for i in range(len(self.queue)):
             if self.queue[i].intake_id == intake_id:
@@ -43,12 +43,12 @@ class NaiveListQueue:
         self.queue.pop(remove_index)
     
 
-    def popHighest(self) -> int:
+    def pop_highest(self) -> int:
         if len(self.queue) == 0:
             raise IndexError("Queue is empty")
         i = min(range(len(self.queue)), key=self.queue.__getitem__)
         return self.queue.pop(i).intake_id
 
     
-    def orderedIntakeIds(self) -> list[int]:
+    def ordered_intake_ids(self) -> list[int]:
         return [r.intake_id for r in sorted(self.queue)]

@@ -57,9 +57,9 @@ def score_claimed(db, intake_id):
     by tests that drive scoring for a specific intake."""
     service = TriageService(db)
     try:
-        # scoreIntake only flushes; this transaction (holding the FOR UPDATE lock)
+        # score_intake only flushes; this transaction (holding the FOR UPDATE lock)
         # stays open through the SCORED mark and commit below.
-        service.scoreIntake(intake_id)
+        service.score_intake(intake_id)
         service.set_scoring_status(intake_id, ScoringStatus.SCORED)
         db.commit()
     except CannotScoreException:

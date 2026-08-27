@@ -10,17 +10,17 @@
       "Fields marked with a sibling key ending in _INFERRED are Claude's plausible guesses where v30 named the view-model but not the exact sub-fields — verify against the real schema and delete the _INFERRED markers once confirmed."
     ],
     "endpoint_method_map": {
-      "POST /patients": "submitIntake(data)",
-      "GET /queue": "getQueue()",
-      "GET /patients/{id}": "getPatientDetail(patientId)",
-      "PATCH /patients/{id}": "updatePatient(patientId, updates)",
-      "POST /overrides": "applyOverride(severityId, clinicianESI, reasonCode, note)",
+      "POST /patients": "submit_intake(data)",
+      "GET /queue": "get_queue()",
+      "GET /patients/{id}": "get_patient_detail(patient_id)",
+      "PATCH /patients/{id}": "update_patient(patient_id, updates)",
+      "POST /overrides": "apply_override(severity_id, clinician_esi, reason_code, note)",
       "GET /metrics": "getMetrics()",
       "GET /reference/complaints": "getComplaintOptions()"
     }
   },
   "POST /patients": {
-    "method": "submitIntake(data)",
+    "method": "submit_intake(data)",
     "valid_201": {
       "request": {
         "headers": {
@@ -214,7 +214,7 @@
     }
   },
   "GET /queue": {
-    "method": "getQueue()",
+    "method": "get_queue()",
     "query_params": [
       "?filter",
       "?status"
@@ -273,7 +273,7 @@
     }
   },
   "GET /intakes/{id}": {
-    "method": "getPatientDetail(patientId)",
+    "method": "get_patient_detail(patient_id)",
     "query_params": [
       "?mode=xai|blackbox"
     ],
@@ -355,7 +355,7 @@
     }
   },
   "PATCH /intakes/{id}": {
-    "method": "updatePatient(patientId, updates)",
+    "method": "update_patient(patient_id, updates)",
     "_note": "Partial update (PATCH). Send only changed fields; others untouched. Recomputes severity + reorders queue (req 1.7).",
     "valid_200": {
       "_why": "Clinician updates pain_level (and optionally other vitals); severity + queue position recompute.",
@@ -466,7 +466,7 @@
     }
   },
   "POST /overrides": {
-    "method": "applyOverride(severityId, clinicianESI, reasonCode, note)",
+    "method": "apply_override(severity_id, clinician_esi, reason_code, note)",
     "valid_201": {
       "request": {
         "headers": {

@@ -45,7 +45,7 @@ class ExplanationBuilder:
         self.db = db
 
 
-    def build(self, severityResult: SeverityResult, intake: IntakeRecord) -> Explanation:
+    def build(self, severity_result: SeverityResult, intake: IntakeRecord) -> Explanation:
         gaps: dict[str, list[str]] = {
             "not_provided": [],
             "assumed": [],
@@ -53,13 +53,13 @@ class ExplanationBuilder:
             "red_flag_input": [],
             "beyond_the_data": [BEYOND_THE_DATA],
         }
-        fields_flagged = self._get_red_flag_fields(severityResult.red_flag_ids)
+        fields_flagged = self._get_red_flag_fields(severity_result.red_flag_ids)
         red_flag_vitals = []
 
         # Build gaps
         for field in ALLOWED_FIELDS:
-            if field in severityResult.missing_fields:
-                if severityResult.fallbacks_applied[field].startswith("assume"):
+            if field in severity_result.missing_fields:
+                if severity_result.fallbacks_applied[field].startswith("assume"):
                     gaps["assumed"].append(field)
                 else:
                     gaps["not_provided"].append(field)
@@ -73,7 +73,7 @@ class ExplanationBuilder:
             gaps["red_flag_input"].append(f"Vitals: {", ".join(sorted(red_flag_vitals))}")
 
         # Generate explanation text
-        explanation_text = f"Confidence: {severityResult.confidence}. This is a triage aid, not a diagnosis. Clinician judgement required."
+        explanation_text = f"Confidence: {severity_result.confidence}. This is a triage aid, not a diagnosis. Clinician judgement required."
 
         try:
             stmt = select(PatientSeverity).where(PatientSeverity.intake_id == intake.intake_id)
@@ -82,9 +82,9 @@ class ExplanationBuilder:
                 logger.error("severity wasn't in database when it should be")
                 raise ExplanationBuildException("severity wasn't in database when it should be")
 
-            factor_breakdown = [asdict(d) for d in severityResult.named_drivers]
+            factor_breakdown = [asdict(d) for d in severity_result.named_drivers]
 
-            # Upsert: updatePatient re-builds on every re-score, so refresh the
+            # Upsert: update_patient re-builds on every re-score, so refresh the
             # existing row rather than inserting a duplicate (which would leave a
             # stale one to be read back).
             existing = self.db.scalar(
@@ -96,7 +96,7 @@ class ExplanationBuilder:
                     intake_id=intake.intake_id,
                     explanation_text=explanation_text,
                     factor_breakdown=factor_breakdown,
-                    data_completeness=severityResult.data_completeness,
+                    data_completeness=severity_result.data_completeness,
                     gaps=gaps
                     # TODO: Add step
                     # TODO: Add lead element
@@ -106,7 +106,7 @@ class ExplanationBuilder:
                 existing.severity_id = severity.severity_id
                 existing.explanation_text = explanation_text
                 existing.factor_breakdown = factor_breakdown
-                existing.data_completeness = severityResult.data_completeness
+                existing.data_completeness = severity_result.data_completeness
                 existing.gaps = gaps
 
             self.db.flush()
@@ -116,8 +116,8 @@ class ExplanationBuilder:
             raise ExplanationBuildException("Explanation creation failed")
 
         return Explanation(
-            severityResult.data_completeness,
-            severityResult.named_drivers,
+            severity_result.data_completeness,
+            severity_result.named_drivers,
             gaps
         )
 

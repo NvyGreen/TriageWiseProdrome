@@ -1,12 +1,12 @@
 """Endpoint tests for GET /queue.
 
-getQueue now reads the persisted queue from triage_queue (joined to patient /
+get_queue now reads the persisted queue from triage_queue (joined to patient /
 patient_severity / esi_band), so these seed real triage_queue rows and assert the
 plumbing: the values seeded come back on the right patient, correctly typed and
 ordered. Severity values are INVENTED — these test shape, not clinical accuracy.
 
 The endpoint uses its own get_db session, so seeds are committed. The test DB
-persists across tests and getQueue reads the whole table, so the autouse fixture
+persists across tests and get_queue reads the whole table, so the autouse fixture
 clears triage_queue first.
 """
 from datetime import date, datetime, timezone

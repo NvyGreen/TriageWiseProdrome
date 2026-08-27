@@ -213,7 +213,7 @@ function TriageQueue() {
             // returns — otherwise another clinician's change would be ignored
             // for the rest of this session. Local values survive only for ids
             // the response omits, which is how pinned (dispositioned) rows keep
-            // their status when getQueue filters them out.
+            // their status when get_queue filters them out.
             setStatuses((prev) => {
                 const next = { ...prev };
 
@@ -325,7 +325,7 @@ function TriageQueue() {
                 return;
             }
 
-            // getQueue excludes dispositioned patients, so keep a copy before
+            // get_queue excludes dispositioned patients, so keep a copy before
             // refetching or the row would simply vanish. Reversing the
             // disposition puts them back in the response, so the copy is
             // dropped rather than shadowing the server's row.

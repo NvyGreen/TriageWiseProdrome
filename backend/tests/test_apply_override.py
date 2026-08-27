@@ -1,7 +1,7 @@
-"""Integration tests for TriageService.applyOverride, driven by override_test_cases.json.
+"""Integration tests for TriageService.apply_override, driven by override_test_cases.json.
 
 Each case seeds a scored patient (patient + intake_record + patient_severity) and a
-pre-populated PriorityQueue with fillers, calls applyOverride, and asserts the full
+pre-populated PriorityQueue with fillers, calls apply_override, and asserts the full
 effect: Result, clinician_ESI mutation, the persisted override row, events
 (override_applied always; reprioritized only on real movement), and queue position.
 
@@ -80,7 +80,7 @@ def _seed_queue(db_session, queue, queue_seed, target_json_id, target_intake, ta
     """Insert each queue entry into BOTH the in-memory heap and triage_queue.
 
     The target reuses its seeded rows; fillers get a minimal patient/intake/
-    severity chain so they exist in the DB — applyOverride now reads positions
+    severity chain so they exist in the DB — apply_override now reads positions
     from triage_queue, so the fillers can't live only in the heap.
 
     The _test DB accumulates triage_queue rows across tests, so clear the table
@@ -138,7 +138,7 @@ def test_apply_override(case, db_session):
     _seed_queue(db_session, queue, seed["queue_seed"], seed["intake_record"]["intake_id"], intake, severity)
 
     call = case["call"]
-    result = TriageService(db_session).applyOverride(
+    result = TriageService(db_session).apply_override(
         severity.severity_id,
         call["clinician_esi"],
         ReasonCode(call["reason_code"]),
@@ -194,7 +194,7 @@ def test_severity_not_found_raises(db_session):
     call = case["call"]
 
     with pytest.raises(SeverityNotFoundError):
-        TriageService(db_session).applyOverride(
+        TriageService(db_session).apply_override(
             call["severity_id"],
             call["clinician_esi"],
             ReasonCode(call["reason_code"]),

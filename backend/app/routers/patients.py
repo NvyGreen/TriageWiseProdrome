@@ -35,7 +35,7 @@ def record_intake(
     # is a 400 from the validation handler instead of a DataError at commit.
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=64),
 ):
-    triageService = TriageService(db)
+    triage_service = TriageService(db)
     request_hash = hash_payload(record)
     existing = check_idempotency(idempotency_key, request_hash, db)
     if existing is not None:
@@ -45,7 +45,7 @@ def record_intake(
     # Fast path: persist the intake as pending and return {intake_id, status}.
     # A separate scorer process (app/scorer.py) claims pending intakes and scores
     # them out-of-band; this endpoint never scores.
-    response_body = triageService.submitIntake(record)
+    response_body = triage_service.submit_intake(record)
     try:
         store_idempotency(idempotency_key, request_hash, response_body, status.HTTP_201_CREATED, db)
         db.commit()

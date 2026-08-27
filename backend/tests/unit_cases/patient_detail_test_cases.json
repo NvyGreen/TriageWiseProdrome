@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "title": "TriageWiseProdrome — patient detail cases (getPatientDetail + GET /intakes/{id}, reqs detail endpoint / R1 mode / D1 surface)",
-    "validates": "Two SEPARATE layers, tested independently: (A) SERVICE composition — TriageService.getPatientDetail(intake_id) assembles a PatientDetail domain object from stored rows; (B) ENDPOINT response — GET /intakes/{id}?mode=... emits PatientDetailOut JSON, with black-box stripping.",
+    "title": "TriageWiseProdrome — patient detail cases (get_patient_detail + GET /intakes/{id}, reqs detail endpoint / R1 mode / D1 surface)",
+    "validates": "Two SEPARATE layers, tested independently: (A) SERVICE composition — TriageService.get_patient_detail(intake_id) assembles a PatientDetail domain object from stored rows; (B) ENDPOINT response — GET /intakes/{id}?mode=... emits PatientDetailOut JSON, with black-box stripping.",
     "nature": "INTEGRATION. Seed rows, then either call the service (layer A) OR hit the endpoint (layer B). Each case targets ONE layer — never mixes domain-object assertions with emitted-JSON assertions.",
     "layer_key": {
       "service": "assert on the PatientDetail OBJECT: domain types (Driver/Trigger objects), domain attr casing (system_ESI), missing_fields present, override=None when absent. No status_code, no event (the service alone logs nothing).",
@@ -27,7 +27,7 @@
   "service_cases": [
     {
       "_name": "svc_full_bundle_composes",
-      "_why": "getPatientDetail assembles every field from stored rows: patient, severity, explanation (drivers rehydrated to Driver objects), lede present, no flags, override None.",
+      "_why": "get_patient_detail assembles every field from stored rows: patient, severity, explanation (drivers rehydrated to Driver objects), lede present, no flags, override None.",
       "seed": {
         "patient": {
           "patient_id": 100,

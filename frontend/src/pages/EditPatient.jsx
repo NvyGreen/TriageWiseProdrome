@@ -38,7 +38,7 @@ const COMPLAINT_LABELS = {
 
 const SEX_LABELS = { F: "Female", M: "Male", other: "Other", unknown: "Unknown" };
 
-// Anything other than "scored" comes back as {intake_id, status}. updatePatient
+// Anything other than "scored" comes back as {intake_id, status}. update_patient
 // needs a severity and a queue row, so editing an unscored intake would 500.
 const NOT_SCORED_TEXT = {
     pending: "This patient hasn't been scored yet. Vitals can be edited once scoring finishes.",
@@ -348,7 +348,7 @@ function EditPatient() {
         setSaving(true);
         setSaveError(null);
 
-        // Only changed fields go in the body. updatePatient keys off
+        // Only changed fields go in the body. update_patient keys off
         // model_fields_set, so anything omitted is left exactly as stored.
         const body = {};
 

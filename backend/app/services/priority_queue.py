@@ -7,7 +7,7 @@ from app.services.queue_key import SortKey
 class PriorityQueue:
     def __init__(self):
         self.heap: list[SortKey] = []
-        # Re-entrant: public methods call each other (e.g. insert -> getIntakePosition,
+        # Re-entrant: public methods call each other (e.g. insert -> get_intake_position,
         # remove -> _find_index_from_intake_id), so the same thread must be able to
         # re-acquire. Serializes all heap mutations/reads so concurrent inserts,
         # updates, and removes can't interleave and corrupt the heap.
@@ -24,17 +24,17 @@ class PriorityQueue:
         with self._lock:
             row = SortKey(esi_band, flag_tier, arrival_time.timestamp(), intake_id)
             heapq.heappush(self.heap, row)
-            return self.getIntakePosition(intake_id)
+            return self.get_intake_position(intake_id)
 
 
-    def updatePatientPosition(self, intake_id: int, esi_band: int, flag_tier: int) -> tuple[int, int]:
+    def update_patient_position(self, intake_id: int, esi_band: int, flag_tier: int) -> tuple[int, int]:
         with self._lock:
             update_index = self._find_index_from_intake_id(intake_id)
-            old_position = self.getIntakePosition(intake_id)
+            old_position = self.get_intake_position(intake_id)
 
             if update_index == 0:
                 heapq.heapreplace(self.heap, SortKey(esi_band, flag_tier, self.heap[update_index].arrival_epoch, intake_id))
-                new_position = self.getIntakePosition(intake_id)
+                new_position = self.get_intake_position(intake_id)
                 return old_position, new_position
 
             self.heap[update_index].esi_band = esi_band
@@ -46,7 +46,7 @@ class PriorityQueue:
             else:
                 self._sift_down(update_index)
 
-            new_position = self.getIntakePosition(intake_id)
+            new_position = self.get_intake_position(intake_id)
             return old_position, new_position
 
 
@@ -75,7 +75,7 @@ class PriorityQueue:
             return intake_id
 
 
-    def popHighest(self) -> int:
+    def pop_highest(self) -> int:
         with self._lock:
             if len(self.heap) == 0:
                 raise IndexError("Queue is empty")
@@ -83,7 +83,7 @@ class PriorityQueue:
             return record.intake_id
 
 
-    def orderedIntakeIds(self) -> list[int]:
+    def ordered_intake_ids(self) -> list[int]:
         with self._lock:
             heap_copy = self.heap[:]
         result = []
@@ -94,7 +94,7 @@ class PriorityQueue:
         return result
 
 
-    def getIntakePosition(self, intake_id: int) -> int:
+    def get_intake_position(self, intake_id: int) -> int:
         # Position = 1 + the number of entries that rank strictly ahead. A direct
         # O(n) count over the heap, instead of copying + draining the whole heap
         # into sorted order (O(n log n)) on every insert/update. SortKey is a

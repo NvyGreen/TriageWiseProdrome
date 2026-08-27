@@ -80,12 +80,12 @@ def _seed(db_session, name, **vitals):
     )
     db_session.add(intake)
     db_session.flush()
-    # A queued intake has been scored (submitIntake invariant); the status path
+    # A queued intake has been scored (submit_intake invariant); the status path
     # reads its severity back, so give it one.
     severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
     db_session.add(severity)
     db_session.flush()
-    # ...and a triage_queue row — updatePatient now reads/updates it.
+    # ...and a triage_queue row — update_patient now reads/updates it.
     db_session.add(TriageQueue(
         patient_id=patient.patient_id, intake_id=intake.intake_id,
         severity_id=severity.severity_id, esi_band=4, flag_tier=3,
@@ -132,7 +132,7 @@ def test_status_change(client, db_session, queue_override, case_name):
     id_map = _seed_and_enqueue(db_session, queue_override, [json_id])
     intake_id = id_map[json_id]
 
-    order_before = queue_override.orderedIntakeIds()
+    order_before = queue_override.ordered_intake_ids()
 
     resp = client.patch(f"/intakes/{intake_id}", json=case["patch"])
     assert resp.status_code == 200
@@ -141,8 +141,8 @@ def test_status_change(client, db_session, queue_override, case_name):
     # expect.rescored == false -> no CaseUpdate row was written.
     assert _case_updates(db_session, intake_id) == []
     # expect.still_in_queue / queue_order_unchanged.
-    assert intake_id in queue_override.orderedIntakeIds()
-    assert queue_override.orderedIntakeIds() == order_before
+    assert intake_id in queue_override.ordered_intake_ids()
+    assert queue_override.ordered_intake_ids() == order_before
 
 
 def test_disposition_removes_from_queue(client, db_session, queue_override):
@@ -244,7 +244,7 @@ def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
 def test_clinical_update_refreshes_completeness(client, db_session, queue_override):
     """Providing missing vitals must refresh BOTH completeness signals: the
     intake's missing_fields column and the explanation's data_completeness.
-    Regression for updatePatient re-scoring but leaving that metadata stale.
+    Regression for update_patient re-scoring but leaving that metadata stale.
     """
     # Baseline: cardiac with 3 of 5 scored vitals; SpO2 and resp rate absent.
     patient = Patient(name="Completeness Refresh", date_of_birth=date(1980, 1, 1), sex="M")
@@ -253,7 +253,7 @@ def test_clinical_update_refreshes_completeness(client, db_session, queue_overri
     intake = IntakeRecord(
         patient_id=patient.patient_id, chief_complaint="cardiac",
         heart_rate=130, blood_pressure_systolic=85, pain_level=9,
-        # As submitIntake would compute it — the VITAL_FIELDS that are None.
+        # As submit_intake would compute it — the VITAL_FIELDS that are None.
         missing_fields=[
             "blood_pressure_diastolic", "temperature",
             "oxygen_saturation", "respiration_rate", "blood_sugar",
@@ -321,7 +321,7 @@ def test_unscoreable_update_returns_422(client, db_session, queue_override, api_
     intake = IntakeRecord(patient_id=patient.patient_id, chief_complaint=complaint)
     db_session.add(intake)
     db_session.flush()
-    # An updated intake has already been scored (submitIntake invariant).
+    # An updated intake has already been scored (submit_intake invariant).
     severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
     db_session.add(severity)
     db_session.flush()
@@ -362,7 +362,7 @@ def test_clinical_update_partial_only_changes_sent_fields(client, db_session, qu
     )
     db_session.add(intake)
     db_session.flush()
-    # An updated intake has already been scored (submitIntake invariant).
+    # An updated intake has already been scored (submit_intake invariant).
     severity = PatientSeverity(intake_id=intake.intake_id, severity_score=1, system_ESI="ESI-4")
     db_session.add(severity)
     db_session.flush()

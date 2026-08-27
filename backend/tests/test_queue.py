@@ -72,7 +72,7 @@ def test_queue_ordering(case, queue_cls):
     if isinstance(action, dict) and "insert" in action:
         _insert(queue, action["insert"])
 
-    assert queue.orderedIntakeIds() == case["expected_order"]
+    assert queue.ordered_intake_ids() == case["expected_order"]
 
 
 @pytest.mark.parametrize("queue_cls", QUEUE_CLASSES, ids=lambda c: c.__name__)
@@ -81,7 +81,7 @@ def test_queue_full_sequence(queue_cls):
     queue = queue_cls()
     for step in SEQUENCE_CASE["sequence"]:
         _insert(queue, step["arrives"])
-        assert queue.orderedIntakeIds() == step["expected_order"]
+        assert queue.ordered_intake_ids() == step["expected_order"]
 
 
 # --- PriorityQueue-specific error / branch coverage ---
@@ -111,20 +111,20 @@ def test_remove_last_element():
     queue.insert(1, 3, _dt(0), 100)   # more acute -> heap root
     queue.insert(2, 3, _dt(1), 200)   # less acute -> last index
     assert queue.remove(200) == 200
-    assert queue.orderedIntakeIds() == [100]
+    assert queue.ordered_intake_ids() == [100]
 
 
 def test_pop_highest_returns_most_acute():
     queue = PriorityQueue()
     queue.insert(2, 3, _dt(1), 200)
     queue.insert(1, 3, _dt(0), 100)
-    assert queue.popHighest() == 100
-    assert queue.orderedIntakeIds() == [200]
+    assert queue.pop_highest() == 100
+    assert queue.ordered_intake_ids() == [200]
 
 
 def test_pop_highest_on_empty_raises():
     with pytest.raises(IndexError):
-        PriorityQueue().popHighest()
+        PriorityQueue().pop_highest()
 
 
 def test_remove_unknown_intake_raises():
@@ -138,4 +138,4 @@ def test_position_unknown_intake_raises():
     queue = PriorityQueue()
     queue.insert(1, 3, _dt(), 100)
     with pytest.raises(ValueError):
-        queue.getIntakePosition(999)
+        queue.get_intake_position(999)

@@ -1,4 +1,4 @@
-"""Service-layer tests for TriageService.getPatientDetail composition.
+"""Service-layer tests for TriageService.get_patient_detail composition.
 
 Layer A of patient_detail_test_cases.json (`service_cases`): assert on the
 PatientDetail DOMAIN OBJECT — domain types (Driver / TriggerInfo instances),
@@ -108,7 +108,7 @@ def test_get_patient_detail_composition(case, db_session):
     expect = case["expect"]
     intake = _seed(db_session, case["seed"])
 
-    detail = TriageService(db_session).getPatientDetail(intake.intake_id)
+    detail = TriageService(db_session).get_patient_detail(intake.intake_id)
 
     if "patient_name" in expect:
         assert detail.patient.name == expect["patient_name"]
@@ -170,7 +170,7 @@ def test_patient_detail_out_exposes_clinical_data_in_both_modes(db_session):
     modes; reasoning fields stay xai-only via exclude_none."""
     case = next(c for c in SERVICE_CASES if c["_name"] == "svc_full_bundle_composes")
     intake = _seed(db_session, case["seed"])
-    detail = TriageService(db_session).getPatientDetail(intake.intake_id)
+    detail = TriageService(db_session).get_patient_detail(intake.intake_id)
 
     black = PatientDetailOut.from_detail(detail, Mode.BLACKBOX).model_dump(exclude_none=True)
     xai = PatientDetailOut.from_detail(detail, Mode.XAI).model_dump(exclude_none=True)
@@ -206,7 +206,7 @@ def test_override_shown_in_both_modes_with_xai_line_gated(db_session):
     (driver-naming reasoning) is XAI-only."""
     case = next(c for c in SERVICE_CASES if c["_name"] == "svc_override_present")
     intake = _seed(db_session, case["seed"])
-    detail = TriageService(db_session).getPatientDetail(intake.intake_id)
+    detail = TriageService(db_session).get_patient_detail(intake.intake_id)
 
     black = PatientDetailOut.from_detail(detail, Mode.BLACKBOX).model_dump(exclude_none=True)
     xai = PatientDetailOut.from_detail(detail, Mode.XAI).model_dump(exclude_none=True)

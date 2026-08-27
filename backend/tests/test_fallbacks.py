@@ -1,6 +1,6 @@
 """ScoringEngine missing-data fallback tests, driven by fallback_test_cases.json.
 
-Covers applyFallback and the four data-quality signals on SeverityResult:
+Covers apply_fallback and the four data-quality signals on SeverityResult:
 missing_fields, fallbacks_applied, data_completeness, confidence (reqs 1.2).
 See test_scoring.py for the shared engine facts (real DB seeding, int->"ESI-N").
 
@@ -90,7 +90,7 @@ def test_fallback_persisted_on_severity_row(db_session):
 def test_unrecognized_scoring_action_is_server_error(db_session):
     """An invalid scoring_action in the rule data is a server config error -> 500,
     not a 422 unscoreable. Corrupt the Heart rate rules' scoring_action, then score
-    an intake missing heart_rate so applyFallback fires. Restore the rules after.
+    an intake missing heart_rate so apply_fallback fires. Restore the rules after.
     """
     saved = {
         r.rule_id: r.scoring_action

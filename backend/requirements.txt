@@ -39,6 +39,7 @@ colorama==0.4.6 ; sys_platform == 'win32' \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
     # via
     #   click
+    #   honcho
     #   typer
 detect-installer==0.1.0 \
     --hash=sha256:00ad7ba0a36e3cf7d08a40d3643011746dbc112597c7d475cc91c416710ca4e7 \
@@ -296,6 +297,10 @@ h11==0.16.0 \
     # via
     #   httpcore
     #   uvicorn
+honcho==2.0.0 \
+    --hash=sha256:56dcd04fc72d362a4befb9303b1a1a812cba5da283526fbc6509be122918ddf3 \
+    --hash=sha256:af3815c03c634bf67d50f114253ea9fef72ecff26e4fd06b29234789ac5b8b2e
+    # via -r requirements.in
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8

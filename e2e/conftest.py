@@ -1,14 +1,17 @@
-"""E2E fixtures: start/stop the real backend + frontend, and clean the real DB.
+"""E2E fixtures: start/stop the backend + scorer + frontend against a dedicated
+E2E database.
 
 This suite is deliberately OUTSIDE backend/tests, so it does NOT pick up that
-package's conftest (which repoints to the _test DB). It runs the app against the
-REAL database — so every test that writes must mark its rows (name starts with
-'ZZTEST') and the db_cleanup fixture removes them afterward.
+package's conftest. It provisions and runs against its OWN `<db>_e2e` database
+(created/migrated/seeded below), separate from both the real DB and the unit-test
+`_test` DB, so the suites never collide. Tests still mark their rows (name starts
+with 'ZZTEST') and db_cleanup removes them between tests.
 
 Run manually from the project root:  pytest e2e/
 Not part of the backend `pytest` run (that has testpaths = tests) and not wired
 into CI.
 """
+import os
 import subprocess
 import sys
 import tempfile
@@ -25,8 +28,37 @@ FRONTEND_DIR = ROOT / "frontend"
 BACKEND_URL = "http://127.0.0.1:8000"       # matches frontend/.env VITE_API_BASE_URL
 FRONTEND_URL = "http://localhost:5173"      # origin allowed by backend CORS
 
-# Backend imports for the real-DB teardown (this dir isn't on the path by default).
+# Backend must be importable (this dir isn't on the path by default).
 sys.path.insert(0, str(BACKEND_DIR))
+
+# Repoint the whole app at a dedicated E2E database BEFORE app.dependencies builds
+# an engine: the launched subprocesses (uvicorn, scorer, alembic, seed) inherit
+# this env, and the in-process ZZTEST cleanup's SessionLocal picks it up too.
+from app.config import get_settings  # noqa: E402
+
+_base_settings = get_settings()
+E2E_DB = (
+    _base_settings.DB_NAME
+    if _base_settings.DB_NAME.endswith("_e2e")
+    else f"{_base_settings.DB_NAME}_e2e"
+)
+_DB_SERVER = dict(
+    user=_base_settings.DB_USER,
+    password=_base_settings.DB_PASSWORD,
+    host=_base_settings.DB_HOST,
+    port=_base_settings.DB_PORT,
+)
+os.environ["DB_NAME"] = E2E_DB
+get_settings.cache_clear()
+
+# Subprocesses run from backend/ and must be able to `import app` (the seed script
+# doesn't fix sys.path itself); they inherit the DB_NAME override above.
+_CHILD_ENV = {
+    **os.environ,
+    "PYTHONPATH": os.pathsep.join(
+        [str(BACKEND_DIR), os.environ.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep),
+}
 
 _LOG_DIR = Path(tempfile.gettempdir())
 
@@ -65,6 +97,40 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _e2e_database():
+    """Create (if missing), migrate, and seed the dedicated `<db>_e2e` database.
+
+    Mirrors backend/tests/conftest, but against a separate name so it never
+    collides with the unit-test DB. The seed script truncates + reloads, so
+    re-running each session is safe. Runs before the backend fixture starts."""
+    import psycopg2
+    from psycopg2 import sql
+
+    # 1. Create the E2E database if missing (via the always-present 'postgres' DB).
+    conn = psycopg2.connect(dbname="postgres", **_DB_SERVER)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (E2E_DB,))
+            if cur.fetchone() is None:
+                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(E2E_DB)))
+    finally:
+        conn.close()
+
+    # 2. Build the schema (alembic/env.py targets E2E_DB via the inherited env).
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=str(BACKEND_DIR), env=_CHILD_ENV, check=True,
+    )
+    # 3. Load the reference tables (truncates + reloads, so safe to re-run).
+    subprocess.run(
+        [sys.executable, "scripts/load_reference_data.py"],
+        cwd=str(BACKEND_DIR), env=_CHILD_ENV, check=True,
+    )
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def frontend():
     """Vite dev server for the whole session (stateless SPA, no per-test reset)."""
     fe_log = open(_LOG_DIR / "e2e_frontend.log", "w")
@@ -82,20 +148,30 @@ def frontend():
 
 
 @pytest.fixture(scope="module", autouse=True)
-def backend(frontend):
-    """A FRESH backend per test module — the in-memory queue is a process-level
-    singleton with no reset, so each file must start with an empty queue (and its
-    orphaned queue entries die with the process on teardown)."""
+def backend(_e2e_database, frontend):
+    """A FRESH backend + scorer per test module, both against the E2E DB.
+
+    The web app only accepts intakes (returns `pending`); the separate scorer
+    process claims and scores them out-of-band, so it must run for the queue to
+    fill. Both are torn down per module; leftover ZZTEST rows are purged by
+    db_cleanup."""
     be_log = open(_LOG_DIR / "e2e_backend.log", "w")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"],
-        cwd=str(BACKEND_DIR), stdout=be_log, stderr=subprocess.STDOUT,
+        cwd=str(BACKEND_DIR), env=_CHILD_ENV, stdout=be_log, stderr=subprocess.STDOUT,
+    )
+    scorer_log = open(_LOG_DIR / "e2e_scorer.log", "w")
+    scorer_proc = subprocess.Popen(
+        [sys.executable, "-m", "app.scorer"],
+        cwd=str(BACKEND_DIR), env=_CHILD_ENV, stdout=scorer_log, stderr=subprocess.STDOUT,
     )
     try:
         if not _wait_until_up(f"{BACKEND_URL}/intakes/test", timeout=45):
             raise RuntimeError(f"backend did not start; see {_LOG_DIR / 'e2e_backend.log'}")
         yield
     finally:
+        _kill_tree(scorer_proc)
+        scorer_log.close()
         _kill_tree(proc)
         _wait_until_down(f"{BACKEND_URL}/intakes/test", timeout=10)  # free 8000 for the next module
         be_log.close()

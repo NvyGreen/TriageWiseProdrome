@@ -1,0 +1,6 @@
+# Coverage config for the `app` gate (pytest.ini: --cov=app --cov-branch --cov-fail-under=85).
+# omit drops files from measurement AND the fail-under denominator.
+[run]
+omit =
+    */services/priority_queue.py
+    */services/naive_list_queue.py

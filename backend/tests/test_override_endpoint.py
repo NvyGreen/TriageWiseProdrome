@@ -14,9 +14,8 @@ Wiring notes from the sweep:
   - request_hash for the replay row is computed with the real hash_payload over
     the (substituted) body so check_idempotency matches; the conflict row uses a
     deliberately different hash.
-  - The endpoint reaches the queue via Depends(get_queue); `override_queue` swaps
-    a fresh queue onto overrides_app and the target intake is inserted for cases
-    that actually run apply_override (else update_patient_position raises).
+  - apply_override reads queue position from the persisted triage_queue table, so
+    cases that actually run it seed the target's triage_queue row.
   - Success/replay bodies are wrapped under "payload" by MedicalDisclaimerResponse.
 """
 import json
@@ -27,8 +26,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from app.dependencies import get_queue
-from app.main import overrides_app
 from app.models.event_log import EventLog
 from app.models.idempotency_key import IdempotencyKey
 from app.models.intake_record import IntakeRecord
@@ -38,7 +35,6 @@ from app.models.patient_severity import PatientSeverity
 from app.models.triage_queue import TriageQueue
 from app.schemas.override_create import OverrideCreate
 from app.services.idempotency import hash_payload
-from app.services.priority_queue import PriorityQueue
 from app.services.triage_service import EventType
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
@@ -49,15 +45,6 @@ DIFFERENT_HASH = "0" * 64  # never equals a real sha256 hex of a valid body
 
 def _at(hhmm: str) -> datetime:
     return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
-
-
-@pytest.fixture
-def override_queue():
-    """Swap the endpoint's queue for a fresh one, scoped to this test."""
-    queue = PriorityQueue()
-    overrides_app.dependency_overrides[get_queue] = lambda: queue
-    yield queue
-    overrides_app.dependency_overrides.pop(get_queue, None)
 
 
 def _seed_rows(db_session, seed):
@@ -128,7 +115,7 @@ def _events(db_session, intake_id, event_type):
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["_name"])
-def test_override_endpoint(case, client, db_session, override_queue):
+def test_override_endpoint(case, client, db_session):
     seed = case["seed"]
     expect = case["expect"]
     severity, intake = _seed_rows(db_session, seed)
@@ -152,7 +139,6 @@ def test_override_endpoint(case, client, db_session, override_queue):
 
     for entry in (seed.get("queue_seed", []) if seed else []):
         band = int(entry["esi"][-1])
-        override_queue.insert(band, entry["flag_tier"], _at("10:00"), real_intake_id)
         # apply_override reads the queue row from triage_queue; commit it so the
         # endpoint's own session sees it.
         db_session.add(TriageQueue(

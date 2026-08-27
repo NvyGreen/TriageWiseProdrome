@@ -9,14 +9,14 @@ autoincrement PK — so each test seeds real rows and maps {json_id: real_id},
 translating `target` and `queue_after_order` through it. Same approach as
 test_queue.py takes with queue_test_cases.json.
 
-Isolation: the endpoint resolves its queue via Depends(get_queue) (the module
-singleton), so `queue_override` swaps in a fresh queue per test. The override
-goes on `intakes_app`, NOT `app` — dependency_overrides is per-app-instance and
-this route is registered on the mounted sub-app.
+Isolation: the queue is the persisted triage_queue table; each seeded intake gets
+a row via `_seed`, and the endpoints read/update it. The test DB persists across
+tests, so queue assertions compare GET /queue before vs after rather than against
+a fixed count.
 
-Deferred until status is persisted: `status_now`. Note that `still_in_queue` and
-`queue_order_unchanged` are weak guards — the non-disposition status path never
-touches the queue — so they catch regressions, not correctness.
+The status path persists the new status on the triage_queue row, so the status
+test asserts `status_now` (the persisted status), `still_in_queue`, and
+`queue_order_unchanged`.
 """
 import json
 from datetime import date, datetime, timezone
@@ -25,8 +25,6 @@ from pathlib import Path
 import pytest
 from sqlalchemy import update
 
-from app.dependencies import get_queue
-from app.main import intakes_app
 from app.models.ai_explanation import AIExplanation
 from app.models.case_update import CaseUpdate
 from app.models.event_log import EventLog
@@ -36,7 +34,6 @@ from app.models.patient import Patient
 from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
 from app.models.triage_queue import TriageQueue
-from app.services.priority_queue import PriorityQueue
 from app.services.scoring_engine import ScoringEngine
 from app.services.red_flag_layer import RedFlagLayer
 from app.services.explanation_builder import ExplanationBuilder
@@ -49,7 +46,7 @@ DETAIL_CASES = json.loads(
 )["endpoint_cases"]
 
 def _at(hhmm: str) -> datetime:
-    """Arrival time as a datetime — PriorityQueue.insert takes datetimes now."""
+    """Arrival time as a timezone-aware datetime (matches triage_queue.arrival_time)."""
     return datetime.strptime(hhmm, "%H:%M").replace(tzinfo=timezone.utc)
 
 # Only the cases that don't need the scoring engine (req 1.4).
@@ -58,15 +55,6 @@ RUNNABLE = {c["_name"]: c for c in CASES["cases"] if not c["needs_scoring"]}
 
 def _case(name):
     return RUNNABLE[name]
-
-
-@pytest.fixture
-def queue_override():
-    """Swap the endpoint's queue for a fresh one, scoped to this test."""
-    queue = PriorityQueue()
-    intakes_app.dependency_overrides[get_queue] = lambda: queue
-    yield queue
-    intakes_app.dependency_overrides.pop(get_queue, None)
 
 
 def _seed(db_session, name, **vitals):
@@ -95,16 +83,14 @@ def _seed(db_session, name, **vitals):
     return intake.intake_id
 
 
-def _seed_and_enqueue(db_session, queue, json_ids):
-    """Seed one intake per fabricated id and insert it in that order.
+def _seed_and_enqueue(db_session, json_ids):
+    """Seed one intake per fabricated id (each gets a triage_queue row via _seed).
 
-    Returns {json_id: real_id}. Ascending esi_band keeps queue order equal to
-    the order given, so `queue_after_order` translates directly.
+    Returns {json_id: real_id} in the given order.
     """
     id_map = {}
-    for position, json_id in enumerate(json_ids, start=1):
+    for json_id in json_ids:
         real_id = _seed(db_session, f"Case Patient {json_id}")
-        queue.insert(position, 3, _at("10:00"), real_id)
         id_map[json_id] = real_id
     return id_map
 
@@ -125,14 +111,18 @@ def _case_updates(db_session, intake_id):
     "case_name",
     ["status_waiting_to_in_room_no_rescore", "status_in_room_back_to_waiting"],
 )
-def test_status_change(client, db_session, queue_override, case_name):
+def test_status_change(client, db_session, case_name):
     """Status patch fires status_changed, doesn't re-score, leaves the queue alone."""
     case = _case(case_name)
     json_id = case["seed"]["intake_id"]
-    id_map = _seed_and_enqueue(db_session, queue_override, [json_id])
+    id_map = _seed_and_enqueue(db_session, [json_id])
     intake_id = id_map[json_id]
 
-    order_before = queue_override.ordered_intake_ids()
+    def _queue_ids():
+        entries = client.get("/queue/").json()["payload"]["entries"]
+        return [e["intake_id"] for e in entries]
+
+    order_before = _queue_ids()
 
     resp = client.patch(f"/intakes/{intake_id}", json=case["patch"])
     assert resp.status_code == 200
@@ -140,15 +130,20 @@ def test_status_change(client, db_session, queue_override, case_name):
     assert len(_events(db_session, intake_id, EventType.STATUS_CHANGED)) == 1
     # expect.rescored == false -> no CaseUpdate row was written.
     assert _case_updates(db_session, intake_id) == []
-    # expect.still_in_queue / queue_order_unchanged.
-    assert intake_id in queue_override.ordered_intake_ids()
-    assert queue_override.ordered_intake_ids() == order_before
+    # expect.still_in_queue / queue_order_unchanged, read from the persisted queue.
+    order_after = _queue_ids()
+    assert intake_id in order_after
+    assert order_after == order_before
+    # status_now: the new status is persisted on the triage_queue row.
+    db_session.expire_all()
+    row = db_session.query(TriageQueue).filter(TriageQueue.intake_id == intake_id).one()
+    assert row.status == case["expect"]["status_now"]
 
 
-def test_disposition_removes_from_queue(client, db_session, queue_override):
+def test_disposition_removes_from_queue(client, db_session):
     case = _case("disposition_removes_from_queue")
     json_ids = [row["intake_id"] for row in case["seed"]["queue_before"]]
-    id_map = _seed_and_enqueue(db_session, queue_override, json_ids)
+    id_map = _seed_and_enqueue(db_session, json_ids)
     target = id_map[case["seed"]["target"]]
 
     resp = client.patch(f"/intakes/{target}", json=case["patch"])
@@ -163,7 +158,7 @@ def test_disposition_removes_from_queue(client, db_session, queue_override):
     assert len(_events(db_session, target, EventType.STATUS_CHANGED)) == 1
 
 
-def test_unknown_intake_id_returns_404(client, queue_override):
+def test_unknown_intake_id_returns_404(client):
     case = _case("error_unknown_intake_id_404")
 
     resp = client.patch(case["patch_to"], json=case["patch"])
@@ -172,7 +167,7 @@ def test_unknown_intake_id_returns_404(client, queue_override):
     assert resp.json()["error"]["code"] == case["expect"]["error_code"]
 
 
-def test_bad_field_returns_400(client, db_session, queue_override):
+def test_bad_field_returns_400(client, db_session):
     """Validation rejects before the id is looked up, so no seeding is needed."""
     case = _case("error_bad_field_400")
 
@@ -184,7 +179,7 @@ def test_bad_field_returns_400(client, db_session, queue_override):
     assert "heart_rate" in {d["field"] for d in err["details"]}
 
 
-def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
+def test_clinical_update_rewrites_flag_tier(client, db_session):
     """clinical_update_fires_flag_tier_rewrite (requires red flags, not queueing).
 
     A clinical patch that trips a red flag rewrites flag_tier + red_flags on the
@@ -218,8 +213,6 @@ def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
     db_session.commit()
     assert baseline.flag_tier == 3  # normal vitals -> no flag yet
 
-    # Clinical update re-queues, so the intake must already be in the queue.
-    queue_override.insert(2, 3, _at("10:00"), intake.intake_id)
 
     # Patch to shock vitals (HR 145 + SBP 88) -> fires flag 9 (Tier 1).
     resp = client.patch(f"/intakes/{intake.intake_id}", json=case["patch"])
@@ -241,7 +234,7 @@ def test_clinical_update_rewrites_flag_tier(client, db_session, queue_override):
     assert latest.system_ESI == "ESI-1"
 
 
-def test_clinical_update_refreshes_completeness(client, db_session, queue_override):
+def test_clinical_update_refreshes_completeness(client, db_session):
     """Providing missing vitals must refresh BOTH completeness signals: the
     intake's missing_fields column and the explanation's data_completeness.
     Regression for update_patient re-scoring but leaving that metadata stale.
@@ -272,10 +265,6 @@ def test_clinical_update_refreshes_completeness(client, db_session, queue_overri
     db_session.commit()
     assert baseline.data_completeness == "3 of 5"
 
-    # Clinical update re-queues, so the intake must already be in the queue.
-    queue_override.insert(
-        int(baseline.esi_level[-1]), baseline.flag_tier, _at("10:00"), intake.intake_id
-    )
 
     resp = client.patch(
         f"/intakes/{intake.intake_id}",
@@ -300,7 +289,7 @@ def test_clinical_update_refreshes_completeness(client, db_session, queue_overri
     assert explanations[0].data_completeness == "5 of 5"
 
 
-def test_unscoreable_update_returns_422(client, db_session, queue_override, api_examples):
+def test_unscoreable_update_returns_422(client, db_session, api_examples):
     """Re-score after the patch has nothing to fire on -> 422 unscoreable.
 
     The patch clears the 5 scoreable vitals but sends temperature (non-scoreable)
@@ -349,7 +338,7 @@ def test_unscoreable_update_returns_422(client, db_session, queue_override, api_
         db_session.commit()
 
 
-def test_clinical_update_partial_only_changes_sent_fields(client, db_session, queue_override):
+def test_clinical_update_partial_only_changes_sent_fields(client, db_session):
     """clinical_update_partial_only_changes_sent_fields: patching one vital changes
     only it, re-scores, and writes a case_update carrying just that field.
     """
@@ -374,8 +363,6 @@ def test_clinical_update_partial_only_changes_sent_fields(client, db_session, qu
     db_session.commit()
     intake_id = intake.intake_id
 
-    # Clinical update re-queues, so the intake must already be in the queue.
-    queue_override.insert(2, 3, _at("10:00"), intake_id)
 
     resp = client.patch(f"/intakes/{intake_id}", json={"pain_level": 8})
     assert resp.status_code == 200
@@ -393,7 +380,7 @@ def test_clinical_update_partial_only_changes_sent_fields(client, db_session, qu
     assert rows[0].updated_vitals == {"pain_level": 8}
 
 
-def test_clinical_update_raises_esi(client, db_session, queue_override):
+def test_clinical_update_raises_esi(client, db_session):
     """clinical_update_raises_esi: a clinical patch that raises severity re-scores,
     moves the patient UP the queue, and fires case_updated + reprioritized.
     """

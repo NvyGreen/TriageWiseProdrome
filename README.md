@@ -1,4 +1,4 @@
-# TriageWiseProdrome · [![backend-tests](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/backend-tests.yml)
+# TriageWiseProdrome · [![backend-tests](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/backend-tests.yml) · [![frontend-checks](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/frontend-checks.yml/badge.svg)](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/frontend-checks.yml) · [![e2e-tests](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/e2e-tests.yml/badge.svg)](https://github.com/NvyGreen/TriageWiseProdrome/actions/workflows/e2e-tests.yml)
 
 A rule-based clinical triage and prioritization engine. It takes an emergency-department intake, assigns an ESI-style acuity level from transparent weighted rules, raises non-obvious red flags, and orders patients in a priority queue — while keeping every decision explainable and leaving final judgment with the clinician.
 
@@ -67,7 +67,7 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 - **Consistent API error contract** — every error returns a structured envelope with a stable code (`invalid_input`, `not_found`, `duplicate_request`, `unscoreable`, `internal_error`), a message, and a request id.
 - **Idempotent writes** — mutating endpoints require an idempotency key so retries don't double-submit.
 - **Efficient queue reads** — the whole queue is assembled in a single joined query rather than one lookup per patient.
-- **Tested and CI-gated** — a fixture-driven Pytest suite covers scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation; `main` is protected and merges only on green tests.
+- **Tested and CI-gated** — three workflows run on every PR: the backend Pytest suite against a live PostgreSQL service (fixture-driven, covering scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation, behind an 85% branch-coverage gate), frontend lint + production build, and the Playwright E2E suite against a provisioned database. `main` is protected on the backend and frontend checks; E2E runs on every PR but is advisory for now.
 
 ## Data & validation
 
@@ -164,8 +164,9 @@ pytest
 ### Running the E2E suite
 
 The browser tests in `e2e/` drive the real frontend against the backend, so they
-have extra prerequisites and their own dependency lock (kept out of the CI install
-path). They are not run in CI.
+have extra prerequisites and their own dependency lock. They run in CI via
+`e2e-tests.yml` on changes to `backend/`, `frontend/`, or `e2e/` — the separate
+lock keeps Playwright out of the *backend unit* CI install, which never needs it.
 
 Prerequisites: PostgreSQL running, `backend/.env` present, and Node available (the
 fixtures shell out to `npm run dev`). The suite provisions its own
@@ -185,7 +186,7 @@ pytest ../e2e
 - `main` always stays working
 - Make a branch per requirement/task: `feature/scoring-engine`, `fix/esi-refinement`
 - Open a PR to merge back
-- Protect `main`: no merge unless CI passes (Pytest green)
+- Protect `main`: no merge unless the required checks pass (backend Pytest + frontend lint/build). E2E runs on every PR but is not yet required.
 
 ## Commit Message Format
 

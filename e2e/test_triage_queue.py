@@ -70,7 +70,7 @@ def test_queue_orders_and_dispositions(page: Page, db_cleanup, wait_for_scored):
     wait_for_scored(3)
     page.get_by_role("link", name="Triage Queue").click()
     expect(page.locator("h1", has_text="Triage Queue")).to_be_visible()
-    rows = page.locator("tbody tr")
+    rows = page.locator("tbody tr", has_text="ZZTEST Queue")
     expect(rows).to_have_count(3)
 
     order = _row_order(page)

@@ -8,8 +8,8 @@ package's conftest. It provisions and runs against its OWN `<db>_e2e` database
 with 'ZZTEST') and db_cleanup removes them between tests.
 
 Run manually from the project root:  pytest e2e/
-Not part of the backend `pytest` run (that has testpaths = tests) and not wired
-into CI.
+Not part of the backend `pytest` run (that has testpaths = tests). Runs in CI via
+the `e2e-tests` workflow, but as an advisory (non-required) check for now.
 """
 import os
 import signal

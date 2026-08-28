@@ -87,8 +87,9 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 | Data model + migrations | Complete |
 | Reference-data loading (scoring, red-flag, ESI, vitals) | Complete |
 | Scoring engine (bands, ESI-3 refinement, fallbacks, drivers) | Complete |
+| Async scoring worker (out-of-band, crash-safe claim) | Complete |
 | Red-flag layer (tree evaluation, tiers) | Complete |
-| Priority queue (heap, 4-tuple key, insert/reposition/remove) | Complete |
+| Priority queue (Postgres-backed, sort-key index, re-ranking) | Complete |
 | API (intake, queue, update, override; error contract; idempotency) | Complete |
 | Explanation layer — 4-part breakdown, lede, risk blurb | Complete |
 | Presentation-mode toggle + dual-score + base-rate + override | Complete |
@@ -130,7 +131,7 @@ cd backend
 pip install -r requirements-dev.txt
 
 # configure your environment
-cp .env.example .env        # then edit DATABASE_URL etc.
+cp .env.example .env        # then edit DB_NAME, DB_USER, etc.
 
 # create the schema
 alembic upgrade head
@@ -149,6 +150,7 @@ The API serves at `http://localhost:8000`. Interactive docs at `/docs`.
 ```bash
 cd frontend
 npm install
+cp .env.example .env        # VITE_API_BASE_URL — point at the backend
 npm run dev
 ```
 

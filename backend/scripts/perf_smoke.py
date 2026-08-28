@@ -45,6 +45,7 @@ get_settings.cache_clear()
 from sqlalchemy import select  # noqa: E402
 from app.dependencies import SessionLocal  # noqa: E402
 from app.models.patient_severity import PatientSeverity  # noqa: E402
+from app import scorer  # noqa: E402
 
 ENDPOINTS = [
     "POST /patients",
@@ -120,6 +121,17 @@ def _exercise(base_url, warmup, measured):
         if status != 201:
             raise RuntimeError(f"POST /patients returned {status}")
         intake_ids.append(_payload(body)["intake_id"])
+
+    # 1b. Score the posted intakes (UNTIMED setup). Async POST returns `pending`
+    #     and doesn't score, but the endpoints below (detail, PATCH, overrides)
+    #     need real severity + queue rows — so score them out-of-band here, the
+    #     same path the scorer process runs.
+    db = SessionLocal()
+    try:
+        for iid in intake_ids:
+            scorer.score_claimed(db, iid)
+    finally:
+        db.close()
 
     # 2. Map intake_id -> severity_id from the DB (POST response omits it).
     db = SessionLocal()
@@ -208,13 +220,13 @@ def main():
     ap.add_argument("--port", type=int, default=8099)
     ap.add_argument("--measured", type=int, default=50)
     ap.add_argument("--warmup", type=int, default=10)
-    ap.add_argument("--out-dir", default=str(Path(__file__).resolve().parents[2] / "perf_out"))
+    ap.add_argument("--out-dir", default=str(BACKEND.parent / "docs" / "validation"))
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    log_path = out_dir / "timing.log"
-    summary_path = out_dir / "perf_summary.md"
+    log_path = out_dir / "latency_timing.log"
+    summary_path = out_dir / "latency.md"
     base_url = f"http://127.0.0.1:{args.port}"
 
     child_env = {
@@ -252,6 +264,10 @@ def main():
         "",
         f"Server-side handler latency (uvicorn, `{TEST_DB}` DB). "
         f"Steady-state drops the first {args.warmup} calls per endpoint.",
+        "",
+        "`POST /patients` is the async pending-ack path — scoring runs out-of-band, "
+        "not in the request. The intakes are then scored as untimed setup so the "
+        "detail / PATCH / override endpoints are measured against real scored rows.",
         "",
         *table,
         "",

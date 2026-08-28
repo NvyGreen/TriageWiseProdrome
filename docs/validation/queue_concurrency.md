@@ -1,12 +1,14 @@
-# Queue Concurrency Stress — Concurrent Inserts
+# Queue Concurrency Stress — Concurrent Submits
 
-Barrier-aligned simultaneous `POST /patients` against a single-worker uvicorn on the `triage_wise_prodrome_test` DB. Queue order checked against a DB-derived expected order (sort key: esi_band, flag_tier, arrival, intake_id).
+Barrier-aligned simultaneous `POST /patients` against a single-worker uvicorn + a separate scorer process on the `triage_wise_prodrome_test` DB. Submit is async (returns `pending`); the scorer scores intakes out-of-band into `triage_queue`. After the backlog drains, the queue is read from the DB and checked against a DB-derived expected order (sort key: esi_band, flag_tier, arrival, intake_id).
 
 ## Run
 
 - Rounds x concurrency: **20 x 50**
 - POSTs attempted: 1000
-- Succeeded (201): 1000
+- Scored (should be queued): 1000
+- Unscoreable / Failed: 0 / 0
+- Still pending (backlog didn't drain): 0
 - In queue after run: 1000
 
 ## Result
@@ -19,7 +21,8 @@ Barrier-aligned simultaneous `POST /patients` against a single-worker uvicorn on
 
 ## Notes
 
-- Single uvicorn worker (the in-memory queue is per-process).
-- Concurrency tests are probabilistic; this raises confidence, it can't prove absence of races. The queue's `RLock` is what makes ordering robust.
+- The barrier aligns concurrent SUBMITS; scoring is out-of-band, so this probes the concurrent DB-insert + async-scoring path, not an in-process lock.
+- Correctness comes from the DB: the sort-key ordering and the unique `triage_queue.intake_id` constraint (prevents duplicate queue rows).
+- Concurrency tests are probabilistic; this raises confidence, it can't prove absence of races.
 - FastAPI caps concurrent sync handlers (~40); extra requests queue server-side but still interleave.
 - Added ~1000 rows to the disposable `triage_wise_prodrome_test` DB.

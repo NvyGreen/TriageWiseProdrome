@@ -3,12 +3,17 @@
 Importing this module repoints DB_NAME to the *_test* database BEFORE any app.*
 import (so the oracle's DB session and the server both target the test DB), then
 exposes:
-  - a live-uvicorn launcher (single worker — the in-memory queue is per-process)
+  - a live-uvicorn launcher (any worker count — the queue is the shared DB
+    `triage_queue` table, so workers no longer split it)
+  - a standalone scorer launcher (`app.scorer`): submit is async and returns
+    `pending`, so a scorer process must run to fill the queue out-of-band
   - an IntakeCreate payload builder that spreads records across ESI bands
-  - the ordering ORACLE: expected queue order from the DB, and a checker that
-    compares it to the actual queue for lost / duplicate / misordered entries
+  - the DB-side ordering ORACLE: wait for the scoring backlog to drain, then read
+    the final queue straight from the DB and check it against the DB-derived
+    expected order for lost / duplicate / misordered entries
 
-Reused by queue_concurrency_smoke.py (barrier burst) and, later, a Locust driver.
+Reused by queue_concurrency_smoke.py (barrier burst) and locustfile.py (sustained
+Locust load).
 """
 import json
 import os

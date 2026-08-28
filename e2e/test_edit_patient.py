@@ -4,14 +4,13 @@ Flow: submit an intake with some scoreable vitals missing, open the patient from
 the queue, go to Edit Patient, fill the missing vitals, Save & Recompute, then
 return to the detail screen.
 
-Isolation: the module-scoped `backend` fixture gives this file a fresh queue; the
-patient stays queued across page navigations (same backend), which the
-clinical-update save needs. `db_cleanup` removes the ZZTEST patient (its
-case_update / severity rows cascade) plus the intake idempotency key (the edit
-PATCH carries no key).
+Isolation: the session-scoped `backend` fixture keeps one backend + scorer up for
+the whole run, so the patient stays queued across page navigations, which the
+clinical-update save needs. Per-test isolation comes from `db_cleanup` purging the
+ZZTEST patient (its case_update / severity rows cascade) at setup and teardown,
+plus the intake idempotency key (the edit PATCH carries no key).
 """
 import re
-import time
 
 from playwright.sync_api import Page, expect
 
@@ -19,7 +18,7 @@ FRONTEND_URL = "http://localhost:5173"
 PATIENT_NAME = "ZZTEST Edit P"
 
 
-def test_edit_fills_missing_vitals(page: Page, db_cleanup):
+def test_edit_fills_missing_vitals(page: Page, db_cleanup, wait_for_scored):
     def on_request(r):
         if r.method == "POST" and "/patients/" in r.url:
             key = r.headers.get("idempotency-key")
@@ -38,15 +37,12 @@ def test_edit_fills_missing_vitals(page: Page, db_cleanup):
     page.click("button[type='submit']")
     expect(page.locator("li", has_text="Intake ID:")).to_be_visible()
 
-    # 2. Queue -> open the patient's detail. Scoring is async and the queue fetches
-    #    on mount, so reload until the scored patient's row appears before opening it.
+    # 2. Wait for the scorer to finish (DB state check), then open the queue and
+    #    click through to the patient's detail — no reload race.
+    wait_for_scored(1)
     page.get_by_role("link", name="Triage Queue").click()
     expect(page.locator("h1", has_text="Triage Queue")).to_be_visible()
     name_link = page.locator("a.namelink", has_text=PATIENT_NAME)
-    deadline = time.monotonic() + 15
-    while name_link.count() == 0 and time.monotonic() < deadline:
-        time.sleep(0.5)
-        page.reload()
     name_link.click()
     expect(page.locator("a.editbtn")).to_be_visible()  # detail loaded
 

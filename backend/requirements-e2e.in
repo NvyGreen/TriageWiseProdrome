@@ -1,0 +1,18 @@
+# Dependencies for the browser E2E suite in e2e/ — NOT needed by the app or the
+# unit-test CI. Kept separate from requirements-dev.in so the backend CI install
+# never pulls Playwright (a large, browser-shipping package it never uses), the
+# same reasoning as requirements-scripts.in.
+#
+# pytest-playwright provides the `page` fixture the e2e tests use; it pulls
+# playwright as a dependency.
+#
+# NOTE: the pip package does NOT include the browser binaries. After installing,
+# run once:  playwright install chromium
+#
+# Compile with (universal -> per-platform hashes, installable on Win + Linux):
+#     uv pip compile requirements-e2e.in -o requirements-e2e.txt \
+#         --generate-hashes --python-version 3.14 --universal --system-certs
+
+-c requirements.txt
+
+pytest-playwright

@@ -161,6 +161,23 @@ cd backend
 pytest
 ```
 
+### Running the E2E suite
+
+The browser tests in `e2e/` drive the real frontend against the backend, so they
+have extra prerequisites and their own dependency lock (kept out of the CI install
+path). They are not run in CI.
+
+Prerequisites: PostgreSQL running, `backend/.env` present, and Node available (the
+fixtures shell out to `npm run dev`). The suite provisions its own
+`<DB_NAME>_e2e` database (created, migrated, and seeded automatically).
+
+```bash
+cd backend
+pip install --require-hashes -r requirements-e2e.txt   # Playwright + pytest-playwright
+playwright install chromium                             # browser binary (not a pip package)
+pytest ../e2e
+```
+
 ## Branching Strategy
 
 **GitHub Flow**

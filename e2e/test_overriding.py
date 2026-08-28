@@ -4,12 +4,11 @@ Flow: submit a patient (cardiac + normal vitals -> system ESI-2), open them from
 the queue, then override the ESI twice — once more-acute (ESI-1) and once
 less-acute (ESI-3) than the system band.
 
-Isolation: the module-scoped `backend` fixture gives this file a fresh, empty
-queue. `db_cleanup` removes the ZZTEST patient (its Override rows cascade) plus
-the captured idempotency keys (one intake + two overrides).
+Isolation: the session-scoped `backend` fixture keeps one backend + scorer up for
+the whole run; per-test isolation comes from `db_cleanup` purging the ZZTEST
+patient (its Override rows cascade) at setup and teardown, plus the captured
+idempotency keys (one intake + two overrides).
 """
-import time
-
 from playwright.sync_api import Page, expect
 
 FRONTEND_URL = "http://localhost:5173"
@@ -42,7 +41,7 @@ def _override(page: Page, band: str, reason: str):
     return resp.value.status
 
 
-def test_override_more_then_less_acute(page: Page, db_cleanup):
+def test_override_more_then_less_acute(page: Page, db_cleanup, wait_for_scored):
     def on_request(r):
         if r.method == "POST" and ("/patients/" in r.url or "/overrides/" in r.url):
             key = r.headers.get("idempotency-key")
@@ -54,16 +53,12 @@ def test_override_more_then_less_acute(page: Page, db_cleanup):
     page.goto(FRONTEND_URL)
     _submit_intake(page)
 
-    # 2. Queue -> click the patient's name -> detail page (wait for its load).
-    #    Scoring is async and the queue fetches on mount, so reload until the
-    #    scored patient's row appears before opening it.
+    # 2. Wait for the scorer to finish (DB state check), then open the queue and
+    #    click through to the detail page — no reload race.
+    wait_for_scored(1)
     page.get_by_role("link", name="Triage Queue").click()
     expect(page.locator("h1", has_text="Triage Queue")).to_be_visible()
     name_link = page.locator("a.namelink", has_text=PATIENT_NAME)
-    deadline = time.monotonic() + 15
-    while name_link.count() == 0 and time.monotonic() < deadline:
-        time.sleep(0.5)
-        page.reload()
     with page.expect_response(
         lambda r: r.request.method == "GET" and "/intakes/" in r.url and "mode=" in r.url
     ) as detail_resp:

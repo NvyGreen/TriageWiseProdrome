@@ -72,8 +72,9 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 ## Data & validation
 
 - **Scoring anchor:** rule weights are grounded in **NHAMCS 2022** emergency-department admission rates. This sets *why* a rule carries the weight it does — it is not a test of the output.
-- **Outcome validation:** measuring the system's assigned ESI against real patient outcomes (admitted / ICU / discharged) using **MC-MED** and **Synthea**-generated records. This is the check on whether the prioritization is actually right.
-- **Interoperability (in progess):** the schema carries FHIR-ready fields (`source`, `external_patient_id`) so records can originate from a FHIR feed later.
+- **Outcome validation:** the engine's ESI was scored against real patient outcomes (admitted / ICU / discharged) on two 500-record **MC-MED**-derived datasets. Exact-band agreement was **34.2%** (balanced) / **31.2%** (representative), under-triage — the dangerous direction — **39.4%** / **56.0%**, and outcome AUC (severity score → admission) **0.797** / **0.598**. The underlying ranking carries signal where the banded output does not; the gap is driven mainly by lossy free-text complaint mapping and adult-calibrated vital thresholds. Full numbers and limitations: [`scoring_validation.md`](docs/validation/scoring_validation.md).
+- **Clinician validation:** a separate 20-case set carrying blind clinician ESI labels agreed on 18/20 (**90%**), with both misses analysed — one a metric artifact, one a documented age-calibration limitation: [`validation_dataset_20.md`](docs/validation/validation_dataset_20.md). The two studies measure different things; the distance between them is the honest picture.
+- **Interoperability (in progress):** the schema carries FHIR-ready fields (`source`, `external_patient_id`) so records can originate from a FHIR feed later.
 
 ## Security
 
@@ -94,7 +95,7 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 | Explanation layer — 4-part breakdown, lede, risk blurb | Complete |
 | Presentation-mode toggle + dual-score + base-rate + override | Complete |
 | Frontend UI | Complete |
-| Outcome validation — MC-MED / Synthea | Complete |
+| Outcome validation — MC-MED (2 x 500 records) | Initial results — see limitations |
 | Demo Screen | Complete |
 | FHIR ingestion / output | In Progress |
 

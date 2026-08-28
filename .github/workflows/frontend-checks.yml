@@ -1,0 +1,59 @@
+name: frontend-checks
+
+# Triggers are deliberately unfiltered. Path filtering lives on the `build` job
+# instead (via the `changes` job below), because a workflow skipped by an `on:`
+# path filter never reports a status at all — so a required `build` check sits at
+# "Expected - Waiting for status to be reported" and blocks the PR forever. A job
+# skipped by `if:` does report, which satisfies the check.
+on:
+  push:
+  pull_request:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Detect frontend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/frontend-checks.yml"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` installs exactly the committed package-lock.json (fails if it's
+      # out of sync), so the build runs against the same deps as the Vercel deploy.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `vite build` is the real gate: it fails on broken imports, syntax errors,
+      # and unresolved modules — the things that silently break the live Vercel link.
+      - name: Build
+        run: npm run build

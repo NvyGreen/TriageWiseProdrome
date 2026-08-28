@@ -6,7 +6,7 @@
 #
 # Compile with:
 #     uv pip compile requirements-scripts.in -o requirements-scripts.txt \
-#         --generate-hashes --python-version 3.14
+#         --generate-hashes --python-version 3.14 --universal --system-certs
 
 -c requirements.txt
 

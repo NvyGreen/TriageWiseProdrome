@@ -26,13 +26,14 @@ def test_bad_input_is_rejected_client_side(page: Page):
     expect(page.locator(".field-error", has_text="Patient name is required.")).to_be_visible()
     expect(page.locator("[aria-invalid='true']").first).to_be_visible()
 
-    # The form never reached the API, and no success was shown.
-    page.wait_for_timeout(500)
+    # The form never reached the API, and no success was shown. The visible
+    # field-error above is the deterministic proof the client blocked submit
+    # before any fetch, so no fixed wait is needed to assert no POST was sent.
     assert posts == []
     expect(page.locator("li", has_text="Intake ID:")).to_have_count(0)
 
 
-def test_valid_intake_succeeds(page: Page, db_cleanup):
+def test_valid_intake_succeeds(page: Page, db_cleanup, wait_for_scored):
     """#4: a valid, scoreable intake with an idempotency key returns 201 and the
     success feedback renders."""
     def on_request(r):
@@ -62,3 +63,7 @@ def test_valid_intake_succeeds(page: Page, db_cleanup):
     # and is queued for out-of-band scoring — no score is returned at submit time.
     expect(page.locator("li", has_text="Intake ID:")).to_be_visible()
     expect(page.locator("li", has_text="Queued for scoring")).to_be_visible()
+
+    # Let the scorer finish before teardown deletes the patient — otherwise the
+    # cleanup DELETE can deadlock against the scorer's in-flight transaction.
+    wait_for_scored(1)

@@ -1,0 +1,115 @@
+name: e2e-tests
+
+# Triggers are deliberately unfiltered. Path filtering lives on the `e2e` job
+# instead (via the `changes` job below), because a workflow skipped by an `on:`
+# path filter never reports a status at all — so a required check would sit at
+# "Expected - Waiting for status to be reported" and block the PR forever. A job
+# skipped by `if:` does report, which satisfies the check.
+on:
+  push:
+  pull_request:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # E2E drives the real frontend against the real backend, so it depends on
+      # both — plus the suite itself and this workflow.
+      - name: Detect changes that affect E2E
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            e2e:
+              - "backend/**"
+              - "frontend/**"
+              - "e2e/**"
+              - ".github/workflows/e2e-tests.yml"
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: triagewise
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-e2e.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The browser binary is the biggest cost; key it on the e2e lock (which
+      # pins the Playwright version).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('backend/requirements-e2e.txt') }}
+
+      # Both files are compiled locks (exact versions + hashes). The e2e lock was
+      # compiled with `-c requirements.txt`, so shared versions align; it pulls
+      # Playwright + pytest, so requirements-dev is not needed here.
+      - name: Install Python dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.txt -r requirements-e2e.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # --with-deps installs the Linux system libraries chromium needs on Ubuntu.
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
+      # The Vite dev server (launched by conftest) reads VITE_API_BASE_URL from
+      # frontend/.env; the example default (http://localhost:8000) already matches
+      # the backend port, and the backend's default CORS already allows :5173.
+      - name: Configure frontend env
+        run: cp frontend/.env.example frontend/.env
+
+      # conftest runs from the repo root and provisions/migrates/seeds the
+      # <DB_NAME>_e2e database itself, then launches uvicorn + scorer + Vite.
+      - name: Run E2E suite
+        env:
+          SECRET_KEY: test-secret-key
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          # conftest.py derives and creates the "<DB_NAME>_e2e" database
+          DB_NAME: triagewise
+        run: pytest e2e

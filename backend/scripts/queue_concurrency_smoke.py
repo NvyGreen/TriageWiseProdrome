@@ -1,9 +1,11 @@
 """Concurrent-insert ordering stress test (build order: queue stability).
 
-Proves the triage queue stays correctly ordered under concurrent inserts. Fires
-bursts of N simultaneous POST /patients (aligned with a Barrier so they hit the
-shared in-memory queue at the same instant — the worst-case interleave), repeated
-over R rounds, then checks the whole queue against a DB-derived expected order.
+Proves the persisted triage queue stays correctly ordered under concurrent
+submits. Fires bursts of N simultaneous POST /patients (aligned with a Barrier so
+they hit the DB at the same instant — the worst-case interleave), repeated over R
+rounds. Submit is async (returns `pending`); a separate scorer process scores the
+intakes out-of-band into `triage_queue`. After the backlog drains, the queue is
+read straight from the DB and checked against a DB-derived expected order.
 
   python scripts/queue_concurrency_smoke.py [--port 8098] [--concurrent 50]
                                             [--rounds 20] [--out-dir <dir>]
@@ -11,10 +13,11 @@ over R rounds, then checks the whole queue against a DB-derived expected order.
 DoD: no lost inserts, no duplicates, no misordering.
 
 Honest limits (also in the report):
-  - Single uvicorn worker (the queue is per-process; >1 worker would split it).
+  - Correctness comes from the DB: the sort key (esi_band, flag_tier, arrival,
+    intake_id) orders the queue and the unique `triage_queue.intake_id` prevents
+    duplicates — not an in-process lock. Worker count no longer affects it.
   - Concurrency tests are probabilistic — high parallelism x repetition raises
-    confidence, it can't prove absence of races. With the queue's RLock in place
-    a clean pass is expected.
+    confidence, it can't prove absence of races.
   - FastAPI caps concurrent sync handlers (~40); beyond that requests queue
     server-side. Still ample interleave.
   - Writes ~N*R rows to the disposable _test DB; not cleaned up.
@@ -60,42 +63,55 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     summary_path = out_dir / "queue_concurrency.md"
     server_log = Path(tempfile.gettempdir()) / "queue_concurrency_server.log"
+    scorer_log = Path(tempfile.gettempdir()) / "queue_concurrency_scorer.log"
     base_url = f"http://127.0.0.1:{args.port}"
 
     proc, log_file = lc.start_server(args.port, server_log)
-    submitted, attempted = [], 0
+    scorer_proc, scorer_log_file = lc.start_scorer(scorer_log)
+    attempted = 0
     try:
         lc.wait_until_up(base_url)
         print(f"server up on {base_url}; {args.rounds} rounds x {args.concurrent} "
-              f"simultaneous inserts...")
+              f"simultaneous submits...")
         counter = 0
         for r in range(args.rounds):
             indices = list(range(counter, counter + args.concurrent))
             counter += args.concurrent
             attempted += args.concurrent
-            submitted.extend(_run_round(base_url, indices))
+            _run_round(base_url, indices)  # submits return `pending`; scorer scores out-of-band
 
-        actual_ids = lc.fetch_queue_ids(base_url)
+        # Submit is async: wait for scoring to drain, then read final state from the
+        # DB (not GET /queue, which would add load while the scorer is still churning).
+        counts = lc.wait_until_scored()
+        scored_ids = lc.db_scored_intake_ids()
+        actual_ids = lc.db_queue_ids()
     finally:
+        lc.stop_server(scorer_proc, scorer_log_file)
         lc.stop_server(proc, log_file)
 
-    result = lc.check_queue(submitted, actual_ids)
+    result = lc.check_queue(scored_ids, actual_ids)
     verdict = "PASS" if result["ok"] else "FAIL"
-    failed_posts = attempted - result["submitted"]
+    scored = counts.get("scored", 0)
+    pending_left = counts.get("pending", 0)
+    failed = counts.get("failed", 0)
 
     lines = [
-        "# Queue Concurrency Stress — Concurrent Inserts",
+        "# Queue Concurrency Stress — Concurrent Submits",
         "",
         f"Barrier-aligned simultaneous `POST /patients` against a single-worker "
-        f"uvicorn on the `{lc.TEST_DB}` DB. Queue order checked against a "
-        f"DB-derived expected order (sort key: esi_band, flag_tier, arrival, intake_id).",
+        f"uvicorn + a separate scorer process on the `{lc.TEST_DB}` DB. Submit is "
+        f"async (returns `pending`); the scorer scores intakes out-of-band into "
+        f"`triage_queue`. After the backlog drains, the queue is read from the DB "
+        f"and checked against a DB-derived expected order (sort key: esi_band, "
+        f"flag_tier, arrival, intake_id).",
         "",
         "## Run",
         "",
         f"- Rounds x concurrency: **{args.rounds} x {args.concurrent}**",
         f"- POSTs attempted: {attempted}",
-        f"- Succeeded (201): {result['submitted']}"
-        + (f"  ⚠ {failed_posts} failed" if failed_posts else ""),
+        f"- Scored (should be queued): {scored}",
+        f"- Unscoreable / Failed: {counts.get('unscoreable', 0)} / {failed}",
+        f"- Still pending (backlog didn't drain): {pending_left}",
         f"- In queue after run: {result['in_queue']}",
         "",
         "## Result",
@@ -110,12 +126,15 @@ def main():
         "",
         "## Notes",
         "",
-        "- Single uvicorn worker (the in-memory queue is per-process).",
+        "- The barrier aligns concurrent SUBMITS; scoring is out-of-band, so this "
+        "probes the concurrent DB-insert + async-scoring path, not an in-process lock.",
+        "- Correctness comes from the DB: the sort-key ordering and the unique "
+        "`triage_queue.intake_id` constraint (prevents duplicate queue rows).",
         "- Concurrency tests are probabilistic; this raises confidence, it can't "
-        "prove absence of races. The queue's `RLock` is what makes ordering robust.",
+        "prove absence of races.",
         "- FastAPI caps concurrent sync handlers (~40); extra requests queue "
         "server-side but still interleave.",
-        f"- Added ~{result['submitted']} rows to the disposable `{lc.TEST_DB}` DB.",
+        f"- Added ~{attempted} rows to the disposable `{lc.TEST_DB}` DB.",
         "",
     ]
     text = "\n".join(lines)

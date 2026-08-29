@@ -1,8 +1,8 @@
-"""Sustained-load queue stress (build order 62 — D4 stress testing).
+"""Sustained-load queue stress (D4 stress testing).
 
 Validates the triage queue stays correct under sustained concurrent load (no
 duplicates / no misordering / no lost inserts) and reports throughput. Uses the
-shared harness in load_common: same single-worker server, payload builder, and
+shared harness in load_common: same server launcher, payload builder, and
 DB-derived ordering oracle as the barrier burst test — only the concurrency
 engine differs (Locust users vs. Barrier).
 
@@ -14,17 +14,19 @@ Run (headless):
   --host isn't needed.
 
 Lifecycle:
-  - test_start: launch a single-worker uvicorn on the _test DB (fresh => empty
-    queue, so only this run fills it).
+  - test_start: reset the transactional tables (reference tables preserved) so
+    only this run fills the queue, then launch uvicorn (--workers N) on the _test
+    DB and the standalone scorer.
   - users: loop POST /patients with distinct payloads + unique Idempotency-Keys;
     each 201 records its intake_id.
-  - test_stop: run the oracle (GET /queue vs. expected order), write
-    docs/validation/queue_stress.md, set the process exit code, stop the server.
+  - test_stop: drain the scoring backlog, run the DB-side oracle (final queue vs.
+    expected order), write docs/validation/queue_stress[_<label>].md, set the
+    process exit code, stop the scorer + server.
 
-Honest limits (same family as the burst test): single worker required; ~40
-concurrent handlers server-side; probabilistic; adds rows to the disposable
-_test DB. Sustained load probes stability over time, not the same-instant
-collision the barrier test manufactures.
+Honest limits (same family as the burst test): probabilistic (a green run is
+evidence, not proof, of race-freedom); ~40 concurrent handlers server-side; adds
+rows to the disposable _test DB (reset at start). Sustained load probes stability
+over time, not the same-instant collision the barrier test manufactures.
 """
 import itertools
 import sys
@@ -93,6 +95,9 @@ class QueueUser(HttpUser):
 
 @events.test_start.add_listener
 def _on_start(environment, **_kw):
+    # Start from an empty DB so only this run fills the queue: reset the
+    # transactional tables (reference tables preserved) before any load.
+    lc.reset_transactional_tables()
     workers = getattr(environment.parsed_options, "workers", 1) or 1
     proc, log_file = lc.start_server(PORT, SERVER_LOG, workers=workers)
     _server["proc"], _server["log"] = proc, log_file
@@ -147,8 +152,10 @@ def _on_stop(environment, **_kw):
             return (f"- {label_}: {s['count']} reqs, {s['failures']} fail, "
                     f"{rps:.1f} req/s, avg {s['avg']:.1f} ms, p95 {s['p95']:.1f} ms")
 
+        post_rps = (post["count"] / run_time) if (post and run_time) else 0
+
         lines = [
-            f"# Queue Stress — Sustained Load (build order 62){f' [{label}]' if label else ''}",
+            f"# Queue Stress — Sustained Load{f' [{label}]' if label else ''}",
             "",
             f"Sustained concurrent `POST /patients` + `GET /queue` (Locust) against a "
             f"{workers}-worker uvicorn on the `{lc.TEST_DB}` DB. Submit is async "
@@ -184,12 +191,30 @@ def _on_stop(environment, **_kw):
             "",
             "## Notes",
             "",
-            "- Submit returns fast (`pending`); scoring is an in-process background "
-            "task, so throughput is still bounded by the worker's CPU + DB.",
+            "- Submit returns fast (`pending`); scoring runs in a **separate process** "
+            "(`app/scorer.py`), not in the web worker. Submit throughput is decoupled "
+            "from scoring; total scoring throughput is bounded by the scorer's CPU + DB.",
             "- GET /queue runs under the same load (read-path stress).",
+            f"- **Latency is under concurrent load** ({opts.num_users} users, "
+            f"~{post_rps:.0f} req/s on POST, {workers} workers, one machine). These are "
+            "not comparable to `latency.md`, which times a single request against an idle "
+            "server; the difference is queueing + DB contention under load — a capacity "
+            "characterization, not a regression.",
+            "- **p95 values sit on Locust bucket boundaries.** Locust buckets response "
+            "times, so p95 rounds to a bucket edge; identical round p95s across endpoints "
+            "are a bucketing artifact, not a coincidence.",
+            "- **Load vs. correctness counts are measured differently.** Load counts are "
+            "client-side (Locust); Scoring/Correctness counts are read from the DB (server "
+            "truth). A small gap between the POST count and the scored count is expected — "
+            "requests in flight when the run stops commit server-side without being counted "
+            "by the client. The correctness check uses the DB counts.",
             "- If 'still pending' > 0, scoring couldn't keep up with submit — a real "
             "capacity signal, not a correctness failure.",
-            f"- Added rows to the disposable `{lc.TEST_DB}` DB.",
+            "- **Probabilistic, single run.** Like the burst test, sustained load gives "
+            "evidence of correctness under this profile, not proof that no race can ever "
+            "occur — a green run is not a proof of absence.",
+            f"- Transactional tables were reset before the run; reference tables preserved. "
+            f"Rows were added to the disposable `{lc.TEST_DB}` DB.",
             "",
         ]
         suffix = f"_{label}" if label else ""

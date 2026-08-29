@@ -177,6 +177,38 @@ def stop_server(proc, log_file):
     log_file.close()
 
 
+# ---- DB reset -------------------------------------------------------------
+# Reference/lookup tables loaded by load_reference_data.py — NEVER truncated.
+_REFERENCE_TABLES = frozenset({
+    "scoring_rule", "red_flag_rule", "esi_band", "vital_range", "condition_reference",
+})
+# Transactional tables a stress run writes. TRUNCATE ... CASCADE also clears any
+# table FK-referencing these; reference tables have no FK into them, so they are
+# never touched.
+_TRANSACTIONAL_TABLES = [
+    "patient", "intake_record", "patient_severity", "ai_explanation",
+    "triage_queue", "event_log", "override", "case_update", "idempotency_key",
+]
+assert not (set(_TRANSACTIONAL_TABLES) & _REFERENCE_TABLES), \
+    "refusing to truncate a reference table"
+
+
+def reset_transactional_tables():
+    """Truncate the transactional tables so a stress run starts from an empty DB
+    (only this run fills the queue). Reference/lookup tables are preserved, so the
+    server can still score. Targets the _test DB (DB_NAME repointed on import)."""
+    from sqlalchemy import text  # noqa: PLC0415
+    db = SessionLocal()
+    try:
+        db.execute(text(
+            "TRUNCATE TABLE " + ", ".join(_TRANSACTIONAL_TABLES)
+            + " RESTART IDENTITY CASCADE"
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
 # ---- ordering oracle ------------------------------------------------------
 
 def expected_order(intake_ids):

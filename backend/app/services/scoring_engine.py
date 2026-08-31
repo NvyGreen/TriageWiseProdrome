@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from ..models.intake_record import IntakeRecord
 from ..models.scoring_rule import ScoringRule
 from ..models.patient_severity import PatientSeverity
+from ..models.patient import Patient
 
 from ..services.red_flag_layer import RedFlagLayer
 
@@ -17,6 +18,7 @@ from ..utils.driver import Driver
 from ..utils.severity_result import SeverityResult
 from ..utils.constants import ESI_THRESHOLDS, VITAL_MAP, TOTAL_VITALS
 from ..utils.enums import ESILevels
+from ..utils.dates import age_in_years
 
 
 class FallbackCodes(StrEnum):
@@ -45,7 +47,7 @@ class ScoringEngine:
             raw_rules = db.scalars(stmt).all()
         except SQLAlchemyError as e:
             logger.exception("Could not get scoring rules")
-            raise ScoringRetrievalException("Could not get scoring rules")
+            raise ScoringRetrievalException("Could not get scoring rules") from e
 
         self.rules: list[Rule] = []
         for raw_rule in raw_rules:
@@ -76,6 +78,18 @@ class ScoringEngine:
         fallbacks = {}
         incomplete_drivers: list[IncompleteDriver] = []
 
+        try:
+            stmt = select(Patient.date_of_birth).where(Patient.patient_id == intake.patient_id)
+            patient_dob = db.scalar(stmt)
+            if patient_dob is None:
+                logger.error("Patient wasn't in database when they should've been")
+                raise ScoringRetrievalException("Patient wasn't in database when they should've been")
+            patient_age = age_in_years(patient_dob)
+        except SQLAlchemyError as e:
+            logger.exception("Could not get patient")
+            raise ScoringRetrievalException("Could not get patient info") from e
+
+        proper_fire = False    # Makes sure a complaint/vital rule fired, not just an age one
         for rule in self.rules:
             if rule.rule_type == "vital":
                 field = VITAL_MAP[rule.factor]
@@ -88,22 +102,17 @@ class ScoringEngine:
                     continue
 
                 if rule.min_bound is None and rule.max_bound is None:
-                    raise CannotScoreException(f"{rule.factor} min bound and max bound are both missing")
+                    raise ScoringRetrievalException(f"{rule.factor} min bound and max bound are both missing")
 
                 if rule.min_bound is not None and check_vital >= rule.min_bound:
                     if rule.max_bound is None or check_vital <= rule.max_bound:
                         points += rule.weight
-                        if rule.units == '%':
-                            incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital}{rule.units}", rule.weight, rule.esi_anchor))
-                        else:
-                            incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital} {rule.units}", rule.weight, rule.esi_anchor))
+                        incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, self._fmt(check_vital, rule.units), rule.weight, rule.esi_anchor))
                 elif rule.min_bound is None and rule.max_bound is not None and check_vital <= rule.max_bound:
                     points += rule.weight
-                    if rule.units == '%':
-                        incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital}{rule.units}", rule.weight, rule.esi_anchor))
-                    else:
-                        incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, f"{check_vital} {rule.units}", rule.weight, rule.esi_anchor))
+                    incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, self._fmt(check_vital, rule.units), rule.weight, rule.esi_anchor))
 
+                proper_fire = True
             elif rule.rule_type == "complaint":
                 if intake.chief_complaint is None:
                     raise CannotScoreException("Chief complaint cannot be missing")
@@ -112,8 +121,24 @@ class ScoringEngine:
                     # An intake can only ever have one chief complaint, so this will only trigger once
                     resource_level = rule.resource_level
                     incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, intake.chief_complaint, rule.weight, rule.esi_anchor))
+
+                proper_fire = True
+            elif rule.rule_type == "age":
+                if rule.min_bound is None and rule.max_bound is None:
+                    raise ScoringRetrievalException(f"{rule.factor} min bound and max bound are both missing")
                 
-        if len(incomplete_drivers) == 0:
+                if rule.min_bound is not None and patient_age >= rule.min_bound:
+                    if rule.max_bound is None or patient_age <= rule.max_bound:
+                        points += rule.weight
+                        incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, self._fmt(patient_age, rule.units), rule.weight, rule.esi_anchor))
+                elif rule.min_bound is None and rule.max_bound is not None and patient_age <= rule.max_bound:
+                    points += rule.weight
+                    incomplete_drivers.append(IncompleteDriver(rule.rule_id, rule.factor, rule.threshold_display, rule.units, self._fmt(patient_age, rule.units), rule.weight, rule.esi_anchor))
+
+            else:
+                raise ScoringRetrievalException(f"Unrecognized rule type {rule.rule_type}")
+                
+        if len(incomplete_drivers) == 0 or not proper_fire:
             raise CannotScoreException("The intake is valid but cannot be scored")
         
         initial_esi = ""
@@ -151,15 +176,16 @@ class ScoringEngine:
         for driver in drivers:
             score_reason = f"{driver.factor} {driver.threshold} +{driver.weight}"
             score_reason_list.append(score_reason)
-        
-        base_reason = ";".join(score_reason_list) + f" = {points} points"
+
+        severity_score = min(points, 100)
+        base_reason = ";".join(score_reason_list) + f" = {severity_score} points"
         if refined:
             reason = base_reason + f" + {resource_level} resource(s) -> {esi_level}"
         else:
             reason = base_reason + f" -> {esi_level}"
 
         result = SeverityResult(
-            min(points, 100),
+            severity_score,
             esi_level,
             initial_esi,
             resource_level,
@@ -191,7 +217,7 @@ class ScoringEngine:
             if severity is None:
                 new_severity = PatientSeverity(
                     intake_id=intake.intake_id,
-                    severity_score=min(points, 100),
+                    severity_score=severity_score,
                     system_ESI=esi_level,
                     score_reason=reason,
                     fallbacks_applied=fallbacks,
@@ -202,7 +228,7 @@ class ScoringEngine:
                 )
                 db.add(new_severity)
             else:
-                severity.severity_score = min(points, 100)
+                severity.severity_score = severity_score
                 severity.system_ESI = esi_level
                 severity.score_reason = reason
                 severity.fallbacks_applied = fallbacks
@@ -216,14 +242,21 @@ class ScoringEngine:
         except SQLAlchemyError as e:
             db.rollback()
             logger.exception("Patient severity creation failed")
-            raise CannotScoreException("Patient severity creation failed")
+            raise ScoringRetrievalException("Patient severity creation failed") from e
 
         result.flag_tier = flag_tier
         result.red_flag_ids = red_flag_ids
         return severity_id, result
 
 
-    def apply_fallback(self, field):
+    @staticmethod
+    def _fmt(value, units: str) -> str:
+        """Percent values render tight ('95%'); everything else takes a space ('120 bpm')."""
+        sep = "" if units == "%" else " "
+        return f"{value}{sep}{units}"
+
+
+    def apply_fallback(self, field: str) -> tuple[bool, str]:
         for rule in self.rules:
             if rule.factor == field:
                 if rule.scoring_action not in FallbackCodes:
@@ -234,7 +267,7 @@ class ScoringEngine:
         raise CannotScoreException("Could not find matching rule")
     
 
-    def refine_by_resource(self, band: str, resource_level: str):
+    def refine_by_resource(self, band: ESILevels, resource_level: str) -> tuple[bool, ESILevels]:
         if resource_level is None:
             raise CannotScoreException("resource_level cannot be missing")
 

@@ -25,7 +25,7 @@ Labels were assigned blind: clinicians reviewed each case's clinical picture and
 | Case | Complaint | System ESI | Clinician ESI | Result |
 | --- | --- | --- | --- | --- |
 | C01 | cardiac | ESI-1 | ESI-1 | ✅ match |
-| C02 | stroke | ESI-2 | ESI-2 | ✅ match |
+| C02 | stroke | ESI-1 | ESI-1 | ✅ match |
 | C03 | respiratory | ESI-1 | ESI-1 | ✅ match |
 | C04 | cardiac | ESI-1 | ESI-1 | ✅ match |
 | C05 | abdominal | ESI-3 | ESI-3 | ✅ match |
@@ -41,8 +41,8 @@ Labels were assigned blind: clinicians reviewed each case's clinical picture and
 | C15 | minor_general | ESI-4 | ESI-4 | ✅ match |
 | C16 | general | ESI-4 | ESI-4 | ✅ match |
 | C17 | abdominal | ESI-4 | ESI-4 | ✅ match |
-| C18 | cardiac | ESI-2 | ESI-2 | ✅ match |
-| C19 | syncope | ESI-3 | ESI-3 | ✅ match |
+| C18 | cardiac | ESI-1 | ESI-1 | ✅ match |
+| C19 | syncope | ESI-2 | ESI-2 | ✅ match |
 | C20 | respiratory | ESI-2 | ESI-2 | ✅ match |
 
 ## Disagreement analysis

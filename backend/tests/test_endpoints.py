@@ -32,8 +32,8 @@ def test_post_patient_appears_in_queue(client, api_examples):
     """End-to-end: POST a valid intake -> scored + queued -> GET /queue shows it.
 
     Uses the contract's valid_201 body as input; asserts the REAL computed values
-    (cardiac + all-normal-for-scoring vitals -> 6 pts -> ESI-2), not the contract's
-    illustrative GET numbers.
+    (cardiac +6, all-normal vitals, plus the patient's age >=65 +2 -> 8 pts ->
+    ESI-1), not the contract's illustrative GET numbers.
     """
     body = api_examples["POST /patients"]["valid_201"]["request"]["body"]
 
@@ -55,7 +55,7 @@ def test_post_patient_appears_in_queue(client, api_examples):
     assert len(match) == 1
 
     entry = match[0]
-    assert entry["esi_level"] == "ESI-2"
-    assert entry["priority_label"] == "High"
+    assert entry["esi_level"] == "ESI-1"
+    assert entry["priority_label"] == "Highest"
     # Numeric(5,1) serializes as a float.
-    assert float(entry["severity_score"]) == 6.0
+    assert float(entry["severity_score"]) == 8.0

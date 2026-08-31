@@ -37,7 +37,7 @@
       ],
       "pre_existing_conditions": [],
       "pregnancy_status": "none",
-      "clinician_esi": "ESI-2"
+      "clinician_esi": "ESI-1"
     },
     {
       "case_id": "C03",
@@ -303,7 +303,7 @@
       "symptoms": [],
       "pre_existing_conditions": [],
       "pregnancy_status": "none",
-      "clinician_esi": "ESI-2"
+      "clinician_esi": "ESI-1"
     },
     {
       "case_id": "C19",
@@ -319,7 +319,7 @@
       "symptoms": [],
       "pre_existing_conditions": [],
       "pregnancy_status": "none",
-      "clinician_esi": "ESI-3"
+      "clinician_esi": "ESI-2"
     },
     {
       "case_id": "C20",

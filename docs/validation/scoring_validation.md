@@ -1,13 +1,13 @@
 # Scoring Engine Validation
 
-_Generated 2026-08-27 22:43. Source: MC-MED-derived datasets (500 records each). Scored against the `triage_wise_prodrome_test` database; all writes rolled back._
+_Generated 2026-08-30 21:18. Source: MC-MED-derived datasets (500 records each). Scored against the `triage_wise_prodrome_test` database; all writes rolled back._
 
 ## Metrics
 
 | Dataset | Scored | Agreement (exact ESI) | Under-triage | Over-triage | AUC (severity_score → admit) |
 | --- | --- | --- | --- | --- | --- |
-| `balanced.json` | 500/500 | 34.2% | 39.4% | 26.4% | 0.797 |
-| `representative.json` | 500/500 | 31.2% | 56.0% | 12.8% | 0.598 |
+| `balanced.json` | 500/500 | 40.2% | 31.6% | 28.2% | 0.853 |
+| `representative.json` | 500/500 | 32.4% | 46.2% | 21.4% | 0.664 |
 
 - **Agreement** — predicted ESI band equals `true_esi` exactly.
 - **Under-triage** — engine scored *less* acute than the real ESI (higher ESI number). The dangerous direction.
@@ -22,4 +22,3 @@ _Generated 2026-08-27 22:43. Source: MC-MED-derived datasets (500 records each).
 - **Unscoreable records excluded.** Records whose (mapped) complaint has no scoring rule are dropped from the metrics: 0 from `balanced.json`, 0 from `representative.json`.
 - **Single-center source.** MC-MED is one academic ED; agreement and outcome relationships may not generalize to other settings.
 - **AUC predictor.** Uses the continuous `severity_score` (raw points), not the discretized 1–5 band, so it reflects the underlying ranking rather than the banded output clinicians see.
-- **Source data not committed.** `balanced.json` and `representative.json` are derived from MC-MED, which is governed by a data use agreement — the records are real patient data and must not leave the machine they were prepared on. They are deliberately absent from this repository, so these numbers cannot be reproduced from the repo alone. Reproducing them requires independently obtaining MC-MED access, running `scripts/mcmed_extractor.py` against `visits.csv`, then `scripts/evaluate_scoring.py`, which regenerates this report.

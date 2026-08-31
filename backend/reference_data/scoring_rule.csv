@@ -20,3 +20,5 @@ rule_id,rule_type,factor,min_bound,max_bound,units,threshold_display,weight,comp
 19,complaint,Chief complaint,,,,"minor injury (sprain, small laceration)",1,minor_injury,one,single X-ray or repair,required field - cannot be missing,,
 20,complaint,Chief complaint,,,,"minor complaint (rash, med refill, cold)",1,minor_general,none,"exam only, fast-track",required field - cannot be missing,,
 21,complaint,Chief complaint,,,,syncope (fainting),3,syncope,many,"ECG, labs, monitor — NHAMCS ~21% admit",required field - cannot be missing,,
+22,age,Age,50,64,yrs,50-64 years,1,,,older-adult admit risk climbs,required field - cannot be missing,,
+23,age,Age,65,,yrs,>= 65 years,2,,,elderly / frailty — high admit rate,required field - cannot be missing,,

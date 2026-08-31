@@ -122,10 +122,20 @@ def test_missing_chief_complaint_raises(db_session):
     """chief_complaint has no fallback — it's required. The engine raises rather
     than score. It's NOT NULL, so the intake can't be persisted; pass a transient
     row. The raise happens before any PatientSeverity write, so nothing persists.
+
+    A real patient must exist first: the engine looks up the patient's DOB (for the
+    age rules) before the rule loop and fails fast if the patient is missing. So
+    seed the patient, then the transient null-complaint intake reaches — and trips
+    — the missing-complaint check, which is what this test is about.
     """
     case = BY_NAME["missing_chief_complaint_is_unscoreable"]
-    # Transient (never added/committed) — a null chief_complaint can't be stored.
+    patient = Patient(name="Fallback Patient", date_of_birth=date(1980, 5, 17), sex="M")
+    db_session.add(patient)
+    db_session.flush()
+    # Transient intake (never added/committed) — a null chief_complaint can't be
+    # stored — but tied to the real patient so the DOB lookup passes.
     intake = IntakeRecord(**case["intake"])
+    intake.patient_id = patient.patient_id
     engine = ScoringEngine(db_session)
 
     with pytest.raises(CannotScoreException):

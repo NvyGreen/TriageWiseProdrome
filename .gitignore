@@ -35,6 +35,7 @@ backend/.coverage
 # MC-MED-derived datasets (real patient data, DUA-covered) land in backend/ root.
 # Anchored so it never touches test fixtures in backend/tests/**.
 backend/*.json
+backend/app/services/keys/
 
 # =========================================================================
 # GENERAL / SYSTEM / EDITORS

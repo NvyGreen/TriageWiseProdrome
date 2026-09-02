@@ -56,10 +56,16 @@ export default function AppLayout() {
                         <List size={17} />
                         <span>Triage Queue</span>
                     </NavLink>
-                    <Link to='/'>
+                    {/* No route yet. A Link here would quietly land on Patient
+                        Intake, so it renders as an inert, visibly-off item. */}
+                    <span
+                        className='navdisabled'
+                        aria-disabled='true'
+                        title='Reports &amp; Metrics is not available yet'
+                    >
                         <ChartColumn size={17} />
                         <span>Reports &amp; Metrics</span>
-                    </Link>
+                    </span>
                     <NavLink to='/demo' className={navClass}>
                         <FlaskConical size={17} />
                         <span>Demo Tools</span>

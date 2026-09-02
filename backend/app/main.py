@@ -15,6 +15,7 @@ from .models.condition_reference import ConditionReference
 from .routers import patients, queue, intakes, overrides, demo
 from .services.idempotency import DuplicateRequestException, IdempotencyKeyRequiredException
 from .services.triage_service import IntakeNotFoundError, SeverityNotFoundError, UnscoreableException
+from .services.epic_fhir_pull import FHIRRetrievalException
 
 
 class MedicalDisclaimerResponse(JSONResponse):
@@ -146,6 +147,19 @@ async def internal_server_error(request: Request, exc: HTTPException):
             }
         )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+@demo_app.exception_handler(FHIRRetrievalException)
+async def fhir_retrieval_error(request: Request, exc: FHIRRetrievalException):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": {
+                "code": "internal_error",
+                "message": "FHIR sandbox retrieval failed.",
+                "request_id": f"req_{uuid.uuid4().hex[:12]}"
+            }
+        }
+    )
 
 async def idempotency_key_required_handler(request: Request, exc: IdempotencyKeyRequiredException):
     return JSONResponse(

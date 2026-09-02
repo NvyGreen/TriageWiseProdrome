@@ -61,7 +61,8 @@
   flex-direction: column;
 }
 
-.nav a {
+.nav a,
+.nav .navdisabled {
   display: flex;
   align-items: center;
   gap: 11px;
@@ -72,9 +73,20 @@
   font-size: 13.5px;
 }
 
-.nav a svg {
+.nav a svg,
+.nav .navdisabled svg {
   opacity: 0.85;
   flex-shrink: 0;
+}
+
+/* Present but inert: dimmed, no hover, no pointer. */
+.nav .navdisabled {
+  color: #6b7c92;
+  cursor: default;
+}
+
+.nav .navdisabled svg {
+  opacity: 0.45;
 }
 
 .nav a:hover {
@@ -168,11 +180,13 @@
 
   .brandrow .word,
   .nav a span,
+  .nav .navdisabled span,
   .side .foot a span {
     display: none;
   }
 
-  .nav a {
+  .nav a,
+  .nav .navdisabled {
     justify-content: center;
     padding: 11px 0;
   }

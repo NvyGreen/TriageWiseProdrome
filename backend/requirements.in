@@ -26,3 +26,6 @@ pydantic
 pydantic-settings
 psycopg2-binary
 honcho          # process manager: runs the web + scorer from one Procfile (deploy)
+requests        # Epic FHIR pull: HTTP calls to the token + FHIR endpoints
+pyjwt           # Epic FHIR pull: signed client-assertion JWT (import name: jwt)
+cryptography    # pyjwt RS384 signing needs a crypto backend

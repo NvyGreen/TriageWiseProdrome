@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services.epic_fhir_pull import FHIRRetrievalException
 from app.services.simulation import PRESETS
 
 CASES = json.loads(
@@ -64,3 +65,47 @@ def test_simulate_bad_request(client, case):
     error = resp.json()["error"]
     assert error["code"] == "invalid_input"
     assert isinstance(error["details"], list) and error["details"]
+
+
+# --- POST /demo/fhir/{fhir_id} ----------------------------------------------
+# fetch_patient_fhir is patched where the router looks it up, so no network runs.
+# build_intake stays real, so the endpoint's mapping is exercised end to end.
+
+_PATIENT = {
+    "resourceType": "Patient",
+    "id": "abc123",
+    "name": [{"text": "Jane Doe"}],
+    "gender": "female",
+    "birthDate": "1980-05-17",
+}
+
+
+def test_fhir_endpoint_returns_draft(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.demo.fetch_patient_fhir",
+        lambda fhir_id: {"patient": _PATIENT, "vitals": None, "condition": None, "encounter": None},
+    )
+
+    resp = client.post("/demo/fhir/abc123")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["disclaimer"]
+    payload = body["payload"]
+    assert payload["name"] == "Jane Doe"
+    assert payload["date_of_birth"] == "1980-05-17"
+    assert payload["source"] == "fhir"
+    # no condition -> chief_complaint is left None (unsubmittable draft, by design)
+    assert payload["chief_complaint"] is None
+
+
+def test_fhir_endpoint_retrieval_error(client, monkeypatch):
+    def boom(fhir_id):
+        raise FHIRRetrievalException("sandbox down")
+
+    monkeypatch.setattr("app.routers.demo.fetch_patient_fhir", boom)
+
+    resp = client.post("/demo/fhir/badid")
+
+    assert resp.status_code == 500
+    assert resp.json()["error"]["code"] == "internal_error"

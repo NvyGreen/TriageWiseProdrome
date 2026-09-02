@@ -19,6 +19,42 @@ const EMPTY_COUNTS = Object.fromEntries(ESI_BANDS.map((band) => [band, 0]));
 
 const EM_DASH = "—";
 
+const FHIR_URL = (fhirId) => `${API_BASE_URL}/demo/fhir/${fhirId}`;
+
+// Epic sandbox patients the demo is allowed to pull.
+const FHIR_PATIENTS = [
+    { id: "erXuFYUfucBZaryVksYEcMg3", name: "Camila Lopez" },
+    { id: "eq081-VQEgP8drUUqCWzHfw3", name: "Derrick Lin" },
+    { id: "eAB3mDIBBcyUKviyzrxsnAw3", name: "Desiree Powell" }
+];
+
+// The five the scoring engine actually uses, matching VITAL_MAP in
+// backend/app/utils/constants.py. The adapter's own missing_fields covers all
+// eight intake vitals, which would report a different, more confusing number.
+const SCORED_VITALS = [
+    "heart_rate",
+    "oxygen_saturation",
+    "respiration_rate",
+    "blood_pressure_systolic",
+    "pain_level"
+];
+
+// Left column is the FHIR path the value came from; right is what it mapped to.
+const FHIR_ROWS = [
+    { path: "Patient.name", field: "name" },
+    { path: "Patient.birthDate", field: "date_of_birth" },
+    { path: "Observation · heart_rate", field: "heart_rate", unit: "bpm" },
+    { path: "Observation · blood_pressure", field: "blood_pressure", unit: "mmHg" },
+    { path: "Observation · temperature", field: "temperature", unit: "°F" },
+    { path: "Observation · spo2", field: "oxygen_saturation", unit: "%" },
+    { path: "Observation · resp_rate", field: "respiration_rate", unit: "/min" },
+    { path: "Observation · pain_score", field: "pain_level", unit: "/ 10" },
+    { path: "Observation · blood_sugar", field: "blood_sugar", unit: "mg/dL" },
+    { path: "Encounter.reasonCode", field: "chief_complaint" }
+];
+
+
+
 
 /**
  * arrival_epoch is Unix seconds, so it needs scaling to milliseconds. Rendered
@@ -35,6 +71,47 @@ function formatArrival(epoch) {
         second: "2-digit",
         hour12: true
     });
+}
+
+
+function isPresent(value) {
+    return value !== null && value !== undefined;
+}
+
+
+/**
+ * Blood pressure spans two fields, and the sandbox can carry one without the
+ * other — Desiree Powell has a diastolic and no systolic — so the halves are
+ * rendered independently rather than as one all-or-nothing value.
+ */
+function formatMapped(record, row) {
+    if (row.field === "blood_pressure") {
+        const systolic = record.blood_pressure_systolic;
+        const diastolic = record.blood_pressure_diastolic;
+
+        if (!isPresent(systolic) && !isPresent(diastolic)) {
+            return null;
+        }
+
+        const left = isPresent(systolic) ? systolic : EM_DASH;
+        const right = isPresent(diastolic) ? diastolic : EM_DASH;
+
+        return `${left} / ${right} ${row.unit}`;
+    }
+
+    const value = record[row.field];
+
+    if (!isPresent(value)) {
+        return null;
+    }
+
+    return row.unit ? `${value} ${row.unit}` : String(value);
+}
+
+
+/** How many of the five scored vitals the record actually carried. */
+function scoredPresent(record) {
+    return SCORED_VITALS.filter((field) => isPresent(record[field])).length;
 }
 
 
@@ -66,6 +143,14 @@ function DemoTools() {
 
     // null = never run. [] = ran and produced no arrivals, which the API treats
     // as a valid result rather than an error.
+    const [fhirId, setFhirId] = useState(FHIR_PATIENTS[0].id);
+    const [record, setRecord] = useState(null);
+    const [fetchingFhir, setFetchingFhir] = useState(false);
+    const [fhirError, setFhirError] = useState(null);
+    const fhirController = useRef(null);
+
+    useEffect(() => () => fhirController.current?.abort(), []);
+
     const [rows, setRows] = useState(null);
     const [running, setRunning] = useState(false);
     const [runError, setRunError] = useState(null);
@@ -195,6 +280,52 @@ function DemoTools() {
         } finally {
             if (!controller.signal.aborted) {
                 setRunning(false);
+            }
+        }
+    };
+
+    // Hits Epic's sandbox over the network with a signed JWT, so it is slower
+    // than the local endpoints and can fail for reasons outside this app.
+    const handleFetchFhir = async () => {
+        if (fetchingFhir) {
+            return;
+        }
+
+        fhirController.current?.abort();
+        const controller = new AbortController();
+        fhirController.current = controller;
+
+        setFetchingFhir(true);
+        setFhirError(null);
+
+        try {
+            const response = await fetch(FHIR_URL(fhirId), {
+                method: "POST",
+                signal: controller.signal
+            });
+
+            const data = await response.json().catch(() => null);
+
+            if (!response.ok) {
+                setFhirError(
+                    data?.error?.message ??
+                        `Could not reach the Epic sandbox (HTTP ${response.status}).`
+                );
+
+                return;
+            }
+
+            setRecord(data?.payload ?? null);
+        } catch (fetchError) {
+            if (fetchError.name === "AbortError") {
+                return;
+            }
+
+            console.error("Fetching the FHIR record failed:", fetchError);
+            setFhirError("Could not reach the server. Check the connection and try again.");
+        } finally {
+            if (!controller.signal.aborted) {
+                setFetchingFhir(false);
             }
         }
     };
@@ -435,19 +566,90 @@ function DemoTools() {
                             Pull a record from the Epic sandbox and map its FHIR
                             resources into the intake model.
                         </p>
-                        {/* No backend for this yet — controls are inert on purpose. */}
-                        <p className='placeholder'>
-                            Epic FHIR import isn't available yet.
-                        </p>
+
+                        <label className='lbl' htmlFor='fhir-patient'>Sandbox patient</label>
+                        <select
+                            id='fhir-patient'
+                            className='fhirselect'
+                            value={fhirId}
+                            onChange={(event) => setFhirId(event.target.value)}
+                            disabled={fetchingFhir}
+                        >
+                            {FHIR_PATIENTS.map((patient) => (
+                                <option key={patient.id} value={patient.id}>
+                                    {patient.name}
+                                </option>
+                            ))}
+                        </select>
+
+                        <button
+                            className='btn btn-primary fullwidth'
+                            type='button'
+                            onClick={handleFetchFhir}
+                            disabled={fetchingFhir}
+                        >
+                            <Import size={14} />
+                            {fetchingFhir ? 'Fetching...' : 'Fetch & map'}
+                        </button>
                     </div>
 
                     <div className='outpanel'>
                         <div className='outhead'>
-                            <h3>FHIR → intake mapping</h3>
+                            <h3>FHIR &rarr; intake mapping</h3>
+                            {record && (
+                                <span className='meta'>{record.name} · read-only</span>
+                            )}
                         </div>
-                        <p className='empty'>
-                            Nothing to show until the import is built.
+                        <p className='outnote'>
+                            Fields the intake model expects, filled from the FHIR record
+                            where present.
                         </p>
+
+                        {fetchingFhir && (
+                            <p className='empty'>Contacting the Epic sandbox...</p>
+                        )}
+
+                        {!fetchingFhir && fhirError && (
+                            <p className='loaderror'>{fhirError}</p>
+                        )}
+
+                        {!fetchingFhir && !fhirError && !record && (
+                            <p className='empty'>
+                                Pick a sandbox patient and fetch to see the mapping.
+                            </p>
+                        )}
+
+                        {!fetchingFhir && !fhirError && record && (
+                            <>
+                                {FHIR_ROWS.map((row) => {
+                                    const mapped = formatMapped(record, row);
+
+                                    return (
+                                        <div className='maprow' key={row.path}>
+                                            <span className='f'>{row.path}</span>
+                                            {mapped === null ? (
+                                                <span className='v missing'>not in record</span>
+                                            ) : (
+                                                <span className='v'>{mapped}</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+
+                                <div className='maprow total'>
+                                    <span className='f'>Data completeness</span>
+                                    <span className='v warn'>
+                                        {scoredPresent(record)} of {SCORED_VITALS.length} scored vitals
+                                    </span>
+                                </div>
+
+                                <div className='note'>
+                                    Mapped this sandbox record into the intake model. It is{' '}
+                                    <strong>not an ED triage encounter</strong>, so it is shown
+                                    as parsed FHIR data only — not scored, not queued.
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

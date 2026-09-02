@@ -107,8 +107,11 @@ def _eff(obs):
 
 def extract_patient(patient_json):
     p = next(_iter_resources(patient_json, "Patient"), None) or {}
+    names = p.get("name", [])
+    name = names[0].get("text") if names else None
     return {
         "external_patient_id": p.get("id"),
+        "name": name,
         "sex": p.get("gender"),
         "age": calc_age(p.get("birthDate")),
         "_birthDate": p.get("birthDate"),
@@ -189,7 +192,7 @@ def extract_arrival(encounter_json):
 # ---------------------------------------------------------------------------
 
 def build_intake(patient=None, vitals=None, condition=None, encounter=None):
-    pat = extract_patient(patient) if patient else {"external_patient_id": None, "sex": None, "age": None}
+    pat = extract_patient(patient) if patient else {"external_patient_id": None, "name": None, "sex": None, "age": None, "_birthDate": None}
     vit = extract_vitals(vitals) if vitals else {f: None for f in VITAL_FIELDS}
     cc  = extract_chief_complaint(condition) if condition else None
 
@@ -198,6 +201,8 @@ def build_intake(patient=None, vitals=None, condition=None, encounter=None):
         missing = ["chief_complaint"] + missing
 
     rec = {
+        "name": pat.get("name"),
+        "date_of_birth": pat.get("_birthDate"),   # FHIR birthDate, ISO YYYY-MM-DD
         "chief_complaint": cc,                    # None when no real complaint (per your choice)
         "heart_rate": vit["heart_rate"],
         "blood_pressure_systolic": vit["blood_pressure_systolic"],
@@ -224,11 +229,11 @@ def build_intake(patient=None, vitals=None, condition=None, encounter=None):
     }
     return rec
 
-def _load(path):
+def _load(path):  # pragma: no cover - CLI file read
     if not path: return None
     with open(path) as f: return json.load(f)
 
-def main():
+def main():  # pragma: no cover - CLI entrypoint
     ap = argparse.ArgumentParser()
     ap.add_argument("--patient")
     ap.add_argument("--vitals")
@@ -243,5 +248,5 @@ def main():
     )
     print(json.dumps(rec, indent=2))
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - CLI entrypoint
     main()

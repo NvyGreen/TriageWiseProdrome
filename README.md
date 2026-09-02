@@ -28,6 +28,7 @@ Intake submission returns immediately with a `pending` status; scoring runs out-
 - **Dual-score disagreement** — when a clinician supplies their own ESI, the system surfaces both side by side and names the drivers that account for the gap.
 - **Illustrative base rates** — an optional, clearly-labelled population admission-rate line from a static reference table, never presented as this patient's probability.
 - **Clinician override** — the system's ESI can be overridden with a structured reason; the override is logged, re-orders the queue by the clinician's value, and is recorded for later review.
+- **Epic FHIR import** — pull a patient's live FHIR R4 bundles (Patient, Observation vitals, Condition, Encounter) from the Epic sandbox by FHIR ID and map them into the intake schema: LOINC codes to vital fields, SNOMED codes to chief complaint. The Demo Tools screen shows the mapping field by field, including what the record didn't carry, so the lossy parts are visible rather than silently defaulted.
 
 ## Architecture & tech stack
 
@@ -54,10 +55,11 @@ GET /queue ──> single indexed read of triage_queue, ordered by
 - **Scorer (worker process)** — claims pending intakes with `FOR UPDATE SKIP LOCKED`. Claim, score, and status write share one transaction: a crash rolls back and the row stays `pending` for the next pass, so there are no stuck rows and no recovery job. The same claim mechanism lets several scorers run concurrently without coordination, so throughput can be increased by starting more of them. The deployment runs a single scorer; there is no autoscaling.
 - **Queue** — persisted in `triage_queue`, ordered by a composite index on `(esi_band, flag_tier, arrival_time, intake_id)`. Rank is a tuple-comparison count, and reads are `LIMIT`-bounded, so queue cost is O(limit) rather than O(n).
 - **TriageService** — coordinates the services and owns persistence and event logging, but not the transaction — the scorer does.
+- **Epic FHIR pull + adapter** (`app/services/epic_fhir_pull.py`, `epic_fhir_adapter.py`) — request-path services behind `POST /demo/fhir/{fhir_id}`. The pull authenticates to Epic and fetches the bundles; the adapter maps them to intake fields and reports what it couldn't resolve. Read-only with respect to the database: nothing is persisted.
 
 Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, condition base rates) is loaded from CSV into lookup tables and read at runtime — changing a weight or a threshold needs no code change.
 
-**Stack:** Python · FastAPI · SQLAlchemy · Alembic · Pytest · PostgreSQL · React + Vite · honcho (web + worker) · deployed on Vercel.
+**Stack:** Python · FastAPI · SQLAlchemy · Alembic · Pytest · PostgreSQL · React + Vite · honcho (web + worker) · SMART on FHIR (Epic sandbox, Backend Services) · deployed on Vercel.
 
 ## Engineering & quality
 
@@ -74,12 +76,13 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 - **Scoring anchor:** rule weights are grounded in **NHAMCS 2022** emergency-department admission rates. This sets *why* a rule carries the weight it does — it is not a test of the output.
 - **Outcome validation:** the engine's ESI was scored against real patient outcomes (admitted / ICU / discharged) on two 500-record **MC-MED**-derived datasets. Exact-band agreement was **40.2%** (balanced) / **32.4%** (representative), under-triage — the dangerous direction — **31.6%** / **46.2%**, and outcome AUC (severity score → admission) **0.853** / **0.664**. The underlying ranking carries signal well beyond what the banded output shows. Adding explicit older-adult age weighting (50–64, 65+) cut under-triage by roughly 8 and 10 points respectively and lifted both AUCs; the remaining gap is driven mainly by lossy free-text complaint mapping and vital thresholds that are still adult-calibrated, which mis-scores paediatric presentations. Full numbers and limitations: [`scoring_validation.md`](docs/validation/scoring_validation.md).
 - **Clinician validation:** a separate 20-case set carrying blind clinician ESI labels agreed on 18/20 (**90%**), with both misses analysed — one a metric artifact, one a documented age-calibration limitation: [`validation_dataset_20.md`](docs/validation/validation_dataset_20.md). The two studies measure different things; the distance between them is the honest picture.
-- **Interoperability (in progress):** the schema carries FHIR-ready fields (`source`, `external_patient_id`) so records can originate from a FHIR feed later.
+- **Interoperability:** intakes can originate from a real EHR. The app authenticates to the Epic sandbox using SMART on FHIR **Backend Services** — an OAuth2 `client_credentials` grant where the app proves its identity with a short-lived JWT signed by its own RSA private key (RS384), so there is no browser, no user login, and no stored client secret. It pulls the patient's FHIR R4 bundles and maps them into the intake schema, handling real Epic quirks: component-style blood pressure, `OperationOutcome` entries mixed into bundles, and the LOINC `8302-2` code that is body height rather than temperature. Where a value can't be resolved — the sandbox rarely carries a mappable chief complaint — the field is left empty and flagged rather than guessed, consistent with how the engine treats missing data everywhere else.
 
 ## Security
 
 - **Allowlist-validated dynamic field access** — the red-flag engine resolves field names supplied by stored condition trees via `getattr`. Each name is validated against the intake table's real columns before access, so a malformed or malicious tree can't reach arbitrary attributes.
 - **Locked-down CORS** — restrict allowed origins to the known frontend rather than a wildcard.
+- **No stored client secret for EHR access** — Epic authentication uses an asymmetric key pair, not a shared secret. The private key lives in `backend/app/services/keys/` and is gitignored; only the public JWKS is committed. Each token request is a fresh assertion valid for a few minutes, so nothing long-lived and reusable is ever transmitted or checked in.
 
 ## Project status
 
@@ -97,7 +100,7 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 | Frontend UI | Complete |
 | Outcome validation — MC-MED (2 x 500 records) | Initial results — see limitations |
 | Demo Screen | Complete |
-| FHIR ingestion / output | In Progress |
+| FHIR ingestion (Epic sandbox pull + intake mapping) | Complete |
 
 ## Screenshots & demo
 
@@ -114,6 +117,10 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 ### Update Patient
 ![Update Pre-Submission](screenshots/update_filled_screen.png)
 ![Update Post-Submission](screenshots/update_submitted_screen.png)
+
+### Demo Screens
+![Triage Queue Demo](screenshots/demo_queue_screen.png)
+![FHIR Conversion Demo](screenshots/demo_fhir_screen.png)
 
 ## Getting started
 
@@ -143,6 +150,26 @@ python -m scripts.load_reference_data
 # run the API + scoring worker
 honcho start -p 8000
 ```
+
+### Epic FHIR setup (optional)
+
+Everything above runs without this. It is needed **only** for the FHIR import tab
+on the Demo Tools screen — without it that tab returns a 500 and the rest of the
+app is unaffected.
+
+The private key is gitignored, so a fresh clone has to register its own app:
+
+1. Generate an RSA key pair into `backend/app/services/keys/` (`private_key.pem`,
+   `public_key.pem`). The private key never leaves that directory and is ignored
+   by git; only the public JWKS (`app/services/jwks.json`) is committed.
+2. Register an app at [fhir.epic.com](https://fhir.epic.com) with **Application
+   Audience = Backend Systems** and `system/*.read` scopes, uploading
+   `public_key.pem`. A SMART-on-FHIR (browser-login) client ID will **not** work
+   for this grant type.
+3. Put the Non-Production Client ID in `backend/.env` as `FHIR_CLIENT_ID`.
+4. **Wait ~60 minutes.** Epic syncs newly registered backend keys to the sandbox
+   on a timer; until it does, every token request fails with `invalid client`
+   regardless of configuration.
 
 The API serves at `http://localhost:8000`. Interactive docs at `/docs`.
 

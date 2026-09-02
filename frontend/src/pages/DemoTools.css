@@ -470,6 +470,81 @@
   color: #a32626;
 }
 
+/* FHIR import */
+.demo .fhirselect {
+  width: 100%;
+  margin-bottom: 12px;
+  /* Room on the right for the chevron the global select rule draws. */
+  padding: 9px 30px 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r6);
+  /* background-color, not the shorthand — the shorthand would reset
+     background-image and erase that chevron. */
+  background-color: var(--card);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.demo .btn.fullwidth {
+  width: 100%;
+  justify-content: center;
+}
+
+.demo .maprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eef1f5;
+  font-size: 12.5px;
+}
+
+.demo .maprow .f {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--slate);
+}
+
+.demo .maprow .v {
+  font-weight: 600;
+  text-align: right;
+}
+
+.demo .maprow .v.missing {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--amber-ink);
+}
+
+.demo .maprow.total {
+  margin-top: 4px;
+  border-bottom: 0;
+}
+
+.demo .maprow.total .f {
+  font-family: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.demo .maprow .v.warn {
+  color: var(--amber-ink);
+}
+
+.demo .note {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--amber-br);
+  border-radius: var(--r6);
+  background: #fff8e6;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #8a5a12;
+}
+
 .demo .placeholder {
   padding: 22px 0;
   text-align: center;

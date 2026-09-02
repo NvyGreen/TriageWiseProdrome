@@ -7,8 +7,14 @@
 # To add or change a dependency:
 #     1. edit this file
 #     2. uv pip compile requirements.in -o requirements.txt \
-#            --generate-hashes --python-version 3.14
+#            --generate-hashes --python-version 3.14 --universal --system-certs
 #     3. commit both files together
+#
+# --universal is REQUIRED: uvicorn[standard] pulls uvloop, which is Linux/macOS
+# only. Without --universal, recompiling on Windows resolves for win32 and drops
+# uvloop from the lock — then the Ubuntu CI / Render install fails --require-hashes
+# because uvicorn still needs it. Universal keeps platform-specific deps (with
+# markers + hashes) so the one lock installs cleanly on Windows, Ubuntu, and Render.
 #
 # Deliberately absent (each is already provided transitively, and nothing
 # imports it directly):

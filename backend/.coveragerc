@@ -1,4 +1,4 @@
-# Coverage config for the `app` gate (pytest.ini: --cov=app --cov-branch --cov-fail-under=85).
+# Coverage config for the `app` gate (pytest.ini: --cov=app --cov-branch --cov-fail-under=90).
 # omit drops files from measurement AND the fail-under denominator.
 [run]
 omit =

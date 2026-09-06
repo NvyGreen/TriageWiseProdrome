@@ -69,7 +69,7 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 - **Consistent API error contract** — every error returns a structured envelope with a stable code (`invalid_input`, `not_found`, `duplicate_request`, `unscoreable`, `internal_error`), a message, and a request id.
 - **Idempotent writes** — mutating endpoints require an idempotency key so retries don't double-submit.
 - **Efficient queue reads** — the whole queue is assembled in a single joined query rather than one lookup per patient.
-- **Tested and CI-gated** — three workflows run on every PR: the backend Pytest suite against a live PostgreSQL service (fixture-driven, covering scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation, behind an 85% branch-coverage gate), frontend lint + production build, and the Playwright E2E suite against a provisioned database. `main` is protected on the backend and frontend checks; E2E runs on every PR but is advisory for now.
+- **Tested and CI-gated** — three workflows run on every PR: the backend Pytest suite against a live PostgreSQL service (fixture-driven, covering scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation, behind an 90% branch-coverage gate), frontend lint + production build, and the Playwright E2E suite against a provisioned database. `main` is protected on the backend and frontend checks; E2E runs on every PR but is advisory for now.
 
 ## Data & validation
 

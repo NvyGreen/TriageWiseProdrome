@@ -65,3 +65,40 @@ def test_context_condition_row_missing_skips_subset(db_session):
             delete(ConditionReference).where(ConditionReference.condition_reference_id == ORPHAN_ID)
         )
         db_session.commit()
+
+
+LOW_N_ID = 9002
+
+
+def test_low_n_reliability_adds_small_sample_note(db_session):
+    """A complaint row flagged `low-n (<30)` appends the 'Small sample' caveat. No
+    CSV *complaint* row carries that flag (the low-n rows are context-only, with no
+    complaint_key), so seed one and tear it down."""
+    db_session.add(
+        ConditionReference(
+            condition_reference_id=LOW_N_ID,
+            condition="Low-n complaint",
+            match_type="complaint",
+            complaint_key="ztest_lown",
+            context_condition=None,  # no subset clause, isolates the low-n branch
+            icd10_prefixes="R01",
+            visits=12,
+            admitted=3,
+            admit_rate=0.10,  # -> 10.0%
+            reliable="low-n (<30)",
+            source_label="NHAMCS 2022",
+        )
+    )
+    db_session.commit()
+    try:
+        result = TriageService(db_session)._render_base_rate("ztest_lown")
+        assert result == (
+            "Illustrative base rate (NHAMCS 2022): Low-n complaint -> 10.0% admitted. "
+            "Population reference, not this patient's probability. "
+            "Small sample, illustrative only."
+        )
+    finally:
+        db_session.execute(
+            delete(ConditionReference).where(ConditionReference.condition_reference_id == LOW_N_ID)
+        )
+        db_session.commit()

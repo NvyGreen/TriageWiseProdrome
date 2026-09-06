@@ -21,6 +21,7 @@ from app.models.patient_severity import PatientSeverity
 from app.models.scoring_rule import ScoringRule
 from app.services.scoring_engine import ScoringEngine, CannotScoreException
 from app.services.red_flag_layer import RedFlagLayer
+from app.utils.enums import ESILevels
 
 UNIT_CASES = Path(__file__).parent / "unit_cases"
 CASES = json.loads((UNIT_CASES / "esi_refinement_test_cases.json").read_text(encoding="utf-8"))["cases"]
@@ -88,3 +89,10 @@ def test_no_complaint_rule_fires_raises(db_session):
             update(ScoringRule).where(ScoringRule.rule_id == rule_id).values(is_active=True)
         )
         db_session.commit()
+
+
+def test_refine_by_resource_missing_resource_level_raises(db_session):
+    """Direct call: a None resource_level must raise, not silently default."""
+    engine = ScoringEngine(db_session)
+    with pytest.raises(CannotScoreException):
+        engine.refine_by_resource(ESILevels.ESI_3, None)

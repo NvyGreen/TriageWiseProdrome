@@ -23,7 +23,14 @@ import pytest
 
 from app.models.intake_record import IntakeRecord
 from app.models.patient import Patient
-from app.services.red_flag_layer import RedFlagLayer, MalformedTreeException, _between, _in, _contains_any
+from app.services.red_flag_layer import (
+    RedFlagLayer,
+    MalformedTreeException,
+    RedFlagRetrievalException,
+    _between,
+    _in,
+    _contains_any,
+)
 from app.services.scoring_engine import ScoringEngine
 from app.utils.trigger import Trigger
 
@@ -184,3 +191,82 @@ def test_unrecognized_node_within_or_raises(db_session):
 def test_unrecognized_helper_raises(db_session):
     with pytest.raises(MalformedTreeException):
         _custom_layer(db_session, {"helper": "bogus", "cmp": ">", "value": 1}).check(IntakeRecord(), None, db_session)
+
+
+# --- Missing-conditions guards (op present but no/empty conditions) ---
+
+def test_top_op_missing_conditions_raises(db_session):
+    # op node with no "conditions" key at all.
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, {"op": "AND"}).check(IntakeRecord(), None, db_session)
+
+
+def test_nested_op_in_and_missing_conditions_raises(db_session):
+    tree = {"op": "AND", "conditions": [{"op": "AND"}]}
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+def test_nested_op_in_or_missing_conditions_raises(db_session):
+    tree = {"op": "OR", "conditions": [{"op": "OR"}]}
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+def test_parse_and_empty_conditions_raises(db_session):
+    # Defensive guard: check() catches empty lists at the op node above, so this
+    # branch is only reachable by calling the parser directly with [].
+    layer = RedFlagLayer(db_session)
+    with pytest.raises(MalformedTreeException):
+        layer._parse_and([], IntakeRecord(), None, db_session)
+
+
+def test_parse_or_empty_conditions_raises(db_session):
+    layer = RedFlagLayer(db_session)
+    with pytest.raises(MalformedTreeException):
+        layer._parse_or([], IntakeRecord(), None, db_session)
+
+
+# --- Helper cmp/value validation ---
+
+def test_helper_missing_cmp_value_raises(db_session):
+    tree = {"helper": "age_in_years", "value": 65}  # no cmp
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+def test_helper_bad_cmp_raises(db_session):
+    tree = {"helper": "age_in_years", "cmp": "BOGUS", "value": 65}
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+# --- Field cmp/value/name validation ---
+
+def test_field_missing_cmp_value_raises(db_session):
+    tree = {"field": "heart_rate", "value": 100}  # no cmp
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+def test_field_bad_cmp_raises(db_session):
+    tree = {"field": "heart_rate", "cmp": "BOGUS", "value": 100}
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+def test_field_unknown_field_raises(db_session):
+    tree = {"field": "not_a_real_column", "cmp": ">", "value": 1}
+    with pytest.raises(MalformedTreeException):
+        _custom_layer(db_session, tree).check(IntakeRecord(), None, db_session)
+
+
+# --- Retrieval error: age helper can't find the patient ---
+
+def test_age_helper_missing_patient_raises_retrieval(db_session):
+    # An age helper looks the patient up by intake.patient_id; a missing row is a
+    # RedFlagRetrievalException, not a malformed tree.
+    tree = {"helper": "age_in_years", "cmp": ">=", "value": 65}
+    intake = IntakeRecord(patient_id=999_999_999)  # transient, no such patient
+    with pytest.raises(RedFlagRetrievalException):
+        _custom_layer(db_session, tree).check(intake, None, db_session)

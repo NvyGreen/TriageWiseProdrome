@@ -140,3 +140,11 @@ def test_missing_chief_complaint_raises(db_session):
 
     with pytest.raises(CannotScoreException):
         engine.score(intake, RedFlagLayer(db_session), db_session)
+
+
+def test_apply_fallback_no_matching_rule_raises(db_session):
+    """apply_fallback is called for a missing vital; if no rule matches the factor
+    the loop falls through to CannotScoreException."""
+    engine = ScoringEngine(db_session)
+    with pytest.raises(CannotScoreException):
+        engine.apply_fallback("not_a_real_factor")

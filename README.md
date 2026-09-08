@@ -147,6 +147,9 @@ alembic upgrade head
 # load reference data (scoring rules, red-flag rules, ESI bands, vital ranges, condition base rates)
 python -m scripts.load_reference_data
 
+# Seed demo patients (optional)
+python scripts/seed_demo_patients.py
+
 # run the API + scoring worker
 honcho start -p 8000
 ```

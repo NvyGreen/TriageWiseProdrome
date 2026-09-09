@@ -6,13 +6,9 @@ from fastapi import FastAPI, Request, status, Depends
 from fastapi.exceptions import RequestValidationError, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 
 from .config import get_settings, Settings
-from .dependencies import get_db
-from .models.esi_band import ESIBand
-from .models.condition_reference import ConditionReference
-from .routers import patients, queue, intakes, overrides, demo
+from .routers import patients, queue, intakes, overrides, demo, rules
 from .services.idempotency import DuplicateRequestException, IdempotencyKeyRequiredException
 from .services.triage_service import IntakeNotFoundError, SeverityNotFoundError, UnscoreableException
 from .services.epic_fhir_pull import FHIRRetrievalException
@@ -81,6 +77,7 @@ queue_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 intakes_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 overrides_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 demo_app =  FastAPI(default_response_class=MedicalDisclaimerResponse)
+rules_app = FastAPI(default_response_class=MedicalDisclaimerResponse)
 
 
 async def validation_handler(request: Request, exc: RequestValidationError):
@@ -250,7 +247,7 @@ async def bad_demo_body_handler(request: Request, exc: ValueError):
     )
 
 
-for sub_app in (patients_app, queue_app, intakes_app, overrides_app, demo_app):
+for sub_app in (patients_app, queue_app, intakes_app, overrides_app, demo_app, rules_app):
     sub_app.add_exception_handler(HTTPException, internal_server_error)
 
 for sub_app in (patients_app, intakes_app, overrides_app, demo_app):
@@ -279,20 +276,12 @@ app.mount("/overrides", overrides_app)
 demo_app.include_router(demo.router)
 app.mount("/demo", demo_app)
 
+rules_app.include_router(rules.router)
+app.mount("/rules", rules_app)
+
 
 @app.get("/")
 def root(settings: Settings = Depends(get_settings)):
     return {
         "message": f"{settings.app_name} API is running"
     }
-
-@app.get("/esi-bands")
-def get_esi_bands(db: Session = Depends(get_db)):
-    # Fetch all 5 bands sorted by their primary key
-    bands = db.query(ESIBand).order_by(ESIBand.band_id).all()
-    return bands
-
-@app.get("/condition-reference")
-def get_condition_reference(db: Session = Depends(get_db)):
-    conditions = db.query(ConditionReference).all()
-    return conditions

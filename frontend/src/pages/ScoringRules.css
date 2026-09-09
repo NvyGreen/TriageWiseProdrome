@@ -1,0 +1,486 @@
+/* Scoped under .rules so the generic names here (.panel, .tabs, .badge, .grid2)
+   can't reach the clinical screens. */
+.rules {
+  --yellow: #caa53b;
+  --violet: #6b5bd0;
+  --crit-bg: #fdecec;
+  --amber-bg: #fff3e6;
+  --ok-bg: #e7f5ee;
+  --r14: 14px;
+
+  width: 100%;
+  max-width: 1510px;
+  margin: 0 auto;
+  padding: 20px 26px 40px;
+}
+
+.rules .head {
+  margin-bottom: 16px;
+}
+
+.rules .h1 {
+  font-size: 20px;
+  margin: 0 0 3px;
+}
+
+.rules .sub {
+  margin: 0;
+}
+
+/* Tabs */
+.rules .tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rules .tab {
+  padding: 9px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--slate);
+  cursor: pointer;
+}
+
+.rules .tab.on {
+  color: var(--navy);
+  border-bottom-color: var(--teal);
+}
+
+/* Panels */
+.rules .panel {
+  margin-bottom: 14px;
+  padding: 17px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r14);
+}
+
+.rules .panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.rules .panel h3.spaced {
+  margin-top: 16px;
+}
+
+.rules .psub {
+  margin: 0 0 12px;
+  font-size: 11.5px;
+  color: var(--slate);
+}
+
+/* Provenance badges — all grey; nothing here is a live engine run */
+.rules .badge {
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.rules .badge.derived {
+  background: #eef2f7;
+  color: #7e8b9a;
+}
+
+.rules .grid2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+/* Complaint weights */
+.rules .cwgroup {
+  margin-bottom: 4px;
+}
+
+.rules .cwrow {
+  display: grid;
+  grid-template-columns: 120px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.rules .cwrow .lbl {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rules .cwtrack {
+  height: 9px;
+  border-radius: 5px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+
+.rules .cwfill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--teal);
+}
+
+.rules .cwval {
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.rules .cwmeta {
+  margin: 1px 0 4px 128px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--slate);
+}
+
+/* Tables */
+.rules table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.rules th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+.rules td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.rules tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rules .esitag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rules .esitag.e1 {
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+
+.rules .esitag.e2 {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.rules .esitag.e3 {
+  background: #fdf6e3;
+  color: var(--yellow);
+}
+
+.rules .esitag.e4 {
+  background: #eef1f5;
+  color: var(--slate);
+}
+
+.rules .esitag.e5 {
+  background: var(--ok-bg);
+  color: var(--green);
+}
+
+.rules .footnote {
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: #9aa6b3;
+}
+
+/* Rule counts */
+.rules .rc {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eef1f5;
+  font-size: 12.5px;
+}
+
+.rules .rc:last-child {
+  border-bottom: 0;
+}
+
+.rules .rc .n {
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.rules .rc .off {
+  margin-left: 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #9aa6b3;
+}
+
+/* Threshold bands. Every row uses the same column count so the cells align;
+   factors with fewer bands get blank padding cells. */
+.rules .heatrow {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rules .heatlbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+.rules .heatcells {
+  display: grid;
+  grid-template-columns: repeat(var(--band-columns, 1), 1fr);
+  gap: 4px;
+}
+
+.rules .heatcell {
+  padding: 6px 8px;
+  border-radius: 5px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #fff;
+}
+
+.rules .heatcell.w4 {
+  background: var(--crit);
+}
+
+.rules .heatcell.w3 {
+  background: #e0662b;
+}
+
+.rules .heatcell.w2 {
+  background: var(--amber);
+}
+
+.rules .heatcell.w1 {
+  background: var(--yellow);
+}
+
+/* No band at this position — deliberately not a coloured "+0" cell. */
+.rules .heatcell.blank {
+  background: #eef1f5;
+  color: #c3cad2;
+}
+
+/* Red flags */
+.rules .tiersplit {
+  display: flex;
+  height: 22px;
+  margin: 8px 0 6px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rules .tiersplit .t1 {
+  background: var(--crit);
+}
+
+.rules .tiersplit .t2 {
+  background: var(--amber);
+}
+
+.rules .tierlegend {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--slate);
+}
+
+.rules .tierlegend .d {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 2px;
+}
+
+.rules .tierlegend .d.t1 {
+  background: var(--crit);
+}
+
+.rules .tierlegend .d.t2 {
+  background: var(--amber);
+}
+
+.rules .ruletable {
+  font-size: 11.5px;
+}
+
+.rules .ruletable th {
+  padding: 7px 8px;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.rules .ruletable td {
+  padding: 8px;
+  vertical-align: top;
+}
+
+.rules .rmsg {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rules .rrat {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--slate);
+}
+
+.rules .rcentre {
+  text-align: center;
+}
+
+.rules .rdepth {
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.rules .flagtier {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.rules .flagtier.t1 {
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+
+.rules .flagtier.t2 {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.rules .rfields,
+.rules .rhelpers {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.rules .rfields {
+  color: #7e8b9a;
+}
+
+.rules .rhelpers {
+  color: var(--violet);
+}
+
+.rules .rnone {
+  color: #c3cad2;
+}
+
+/* Worked example */
+.rules .drow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef1f5;
+  font-size: 12px;
+}
+
+.rules .drow:last-of-type {
+  border-bottom: 0;
+}
+
+.rules .drow .f {
+  color: var(--ink);
+}
+
+.rules .drow .w {
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.rules .dtotal {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+/* Loading / error */
+.rules .emptystate {
+  padding: 40px 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+.rules .loaderror {
+  font-weight: 600;
+  color: var(--crit);
+}
+
+@media (max-width: 1080px) {
+  .rules .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .rules {
+    padding: 16px 14px 32px;
+  }
+
+  .rules .heatrow {
+    grid-template-columns: 1fr;
+  }
+
+  .rules .heatcells {
+    grid-template-columns: 1fr;
+  }
+
+  .rules .heatcell.blank {
+    display: none;
+  }
+
+  .rules .cwmeta {
+    margin-left: 0;
+  }
+}

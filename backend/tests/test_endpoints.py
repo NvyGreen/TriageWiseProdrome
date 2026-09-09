@@ -13,20 +13,6 @@ def test_endpoints_have_disclaimer(client):
     assert "disclaimer" in root_meta
     assert root_meta["disclaimer"] == disclaimer_message
 
-    esi_response = client.get("/esi-bands")
-    esi_body = esi_response.json()
-    assert "meta" in esi_body
-    esi_meta = esi_body["meta"]
-    assert "disclaimer" in esi_meta
-    assert esi_meta["disclaimer"] == disclaimer_message
-
-    cr_response = client.get("/condition-reference")
-    cr_body = cr_response.json()
-    assert "meta" in cr_body
-    cr_meta = cr_body["meta"]
-    assert "disclaimer" in cr_meta
-    assert cr_meta["disclaimer"] == disclaimer_message
-
 
 def test_post_patient_appears_in_queue(client, api_examples):
     """End-to-end: POST a valid intake -> scored + queued -> GET /queue shows it.

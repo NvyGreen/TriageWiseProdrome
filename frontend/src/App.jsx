@@ -6,6 +6,7 @@ import TriageQueue from './pages/TriageQueue'
 import PatientDetail from './pages/PatientDetail'
 import EditPatient from './pages/EditPatient'
 import DemoTools from './pages/DemoTools'
+import ScoringRules from './pages/ScoringRules'
 
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
                     <Route path='/queue' element={<TriageQueue />} />
                     <Route path='/intakes/:intakeId' element={<PatientDetail />} />
                     <Route path='/intakes/:intakeId/edit' element={<EditPatient />} />
+                    <Route path='/rules' element={<ScoringRules />} />
                     <Route path='/demo' element={<DemoTools />} />
                 </Route>
             </Routes>

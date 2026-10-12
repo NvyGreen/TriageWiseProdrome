@@ -79,24 +79,6 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 - **Allowlist-validated dynamic field access** — the red-flag engine resolves field names supplied by stored condition trees via `getattr`. Each name is validated against the intake table's real columns before access, so a malformed or malicious tree can't reach arbitrary attributes.
 - **Locked-down CORS** — restrict allowed origins to the known frontend rather than a wildcard.
 
-## Project status
-
-| Area | Status |
-| --- | --- |
-| Data model + migrations | Complete |
-| Reference-data loading (scoring, red-flag, ESI, vitals) | Complete |
-| Scoring engine (bands, ESI-3 refinement, fallbacks, drivers) | Complete |
-| Async scoring worker (out-of-band, crash-safe claim) | Complete |
-| Red-flag layer (tree evaluation, tiers) | Complete |
-| Priority queue (Postgres-backed, sort-key index, re-ranking) | Complete |
-| API (intake, queue, update, override; error contract; idempotency) | Complete |
-| Explanation layer — 4-part breakdown, lede, risk blurb | Complete |
-| Presentation-mode toggle + dual-score + base-rate + override | Complete |
-| Frontend UI | Complete |
-| Outcome validation — MC-MED (2 x 500 records) | Initial results — see limitations |
-| Demo Screen | Complete |
-| FHIR ingestion (Epic sandbox pull + intake mapping) | Complete |
-
 ## Screenshots & demo
 
 ### Patient Intake

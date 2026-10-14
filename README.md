@@ -8,7 +8,7 @@ A rule-based clinical triage and prioritization engine. It takes an emergency-de
 
 ## Problem
 
-In an emergency department, minutes matter, and two common failure modes show up in triage tooling: black-box acuity models that weigh many signals at once but can't show *why* they landed on a number, and simple rule- or checklist-based tools that are transparent but score one axis at a time rather than weighing how signals combine. Neither lets a clinician both see the reasoning *and* trust that combinations were accounted for — and the dangerous cases are often the ones that look normal: an elderly patient with vague symptoms and unremarkable vitals, a febrile newborn, early shock hiding behind borderline numbers. A triage aid is only trustworthy if its reasoning is visible and the clinician stays in control.
+In an emergency department, every minute matters. Doctors and nurses need to quickly identify which patients need urgent care. However, existing triage tools have two main limitations. Some use complex AI/ML models that give a risk score but cannot clearly explain why. Others use simple rules or checklists that are easy to understand but may miss how multiple symptoms and warning signs work together. This can be dangerous because some seriously ill patients may not show obvious warning signs at first. For example, an older adult may have unusual symptoms, a newborn may have a fever, or a patient may be developing shock even when their vital signs seem almost normal. The goal is to build a triage tool that considers multiple warning signs together, clearly explains why a patient may need urgent attention, and helps clinicians make informed decisions without replacing their judgment.
 
 ## Solution
 

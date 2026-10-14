@@ -65,11 +65,52 @@ Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, con
 - **Idempotent writes** — mutating endpoints require an idempotency key so retries don't double-submit.
 - **Tested and CI-gated** — three workflows run on every PR: the backend Pytest suite against a live PostgreSQL service (fixture-driven, covering scoring, ESI refinement, missing-data fallbacks, red-flag evaluation, the explanation/lede/dual-score/base-rate rendering, override logging, and input validation, behind an 90% branch-coverage gate), frontend lint + production build, and an E2E suite against a provisioned database. `main` is protected on the backend and frontend checks; E2E runs on every PR but is advisory for now.
 
-## Data & validation
+## Validation and Results
 
-- **Scoring anchor:** rule weights are grounded in **NHAMCS 2022** emergency-department admission rates. This sets *why* a rule carries the weight it does — it is not a test of the output.
-- **Outcome validation:** the engine's ESI was scored against real patient outcomes (admitted / ICU / discharged) on two 500-record **MC-MED**-derived datasets. Exact-band agreement was **40.2%** (balanced) / **32.4%** (representative), under-triage — the dangerous direction — **31.6%** / **46.2%**, and outcome AUC (probability of higher bands getting admitted over lower bands) **0.853** / **0.664**. The underlying ranking carries signal well beyond what the banded output shows. Adding explicit older-adult age weighting (50–64, 65+) cut under-triage by roughly 8 and 10 points respectively and lifted both AUCs; the remaining gap is driven mainly by lossy free-text complaint mapping and vital thresholds that are still adult-specific, which mis-scores pediatric presentations. Full numbers and limitations: [`scoring_validation.md`](docs/validation/scoring_validation.md).
-- **Clinician validation:** a separate 20-case set carrying blind clinician ESI labels agreed on 18/20 (**90%**), with both misses analysed — one a metric artifact, one a documented age-calibration limitation: [`validation_dataset_20.md`](docs/validation/validation_dataset_20.md). The two studies measure different things; the distance between them is the honest picture.
+### 1. Real Patient Outcome Validation
+
+The system was tested on two datasets of 500 patient records each, derived from MC-MED. The goal was to evaluate how well its triage scores aligned with actual patient outcomes, including hospital admission, ICU admission, and discharge.
+
+**Key results:**
+| Metric | Balanced Dataset | Representative Dataset |
+| ------ | ---------------- | ---------------------- |
+| Exact triage-level agreement | 40.2% | 32.4% |
+| Under-triage rate | 31.6% | 46.2% |
+| Outcome AUC | 0.853 | 0.664 |
+
+**What do these results mean?**  
+Exact agreement: How often the system assigned the same triage level as the outcome-based comparison.  
+Under-triage: Cases where the system assigned a lower priority than the patient's outcome suggested was appropriate. This is particularly concerning because it can delay urgent care.  
+Outcome AUC: How well the scores distinguish patients who are more likely to be admitted from those who are less likely to be admitted. Higher values indicate better discrimination.
+Full numbers and limitations: [`scoring_validation.md`](docs/validation/scoring_validation.md).
+
+### 2. Clinician Validation
+
+The system was tested on a separate set of 20 patient cases. Its triage assessments were compared with clinician-assigned Emergency Severity Index (ESI) levels.
+
+Results: 18 out of 20 cases matched, achieving 90% agreement.
+
+The two cases where the system disagreed with clinicians were reviewed:  
+Case 1: Heavy bleeding after childbirth. The system assigned ESI-4, while the clinician assigned ESI-2. The system's red-flag mechanism detected the risk and moved the patient ahead of other ESI-4 patients in the priority queue. However, it did not change the patient's ESI score, so the system's assigned triage level still differed from the clinician's assessment.  
+Case 2: Newborn's vital signs assessed using adult standards. The system assigned ESI-1 to a 20-day-old newborn, while the clinician assigned ESI-2. Because the system used adult vital-sign thresholds instead of age-specific ranges, it interpreted the newborn's vital signs as more abnormal than they were. This led to a higher urgency level than the clinician assigned. Although this was a scoring error, it resulted in over-triage rather than under-triage.  
+
+What this tells us: The system matched clinician assessments in 18 of the 20 cases, but the two disagreements revealed important areas for improvement. Case 1 highlighted the difference between the assigned ESI score and the priority queue position. Case 2 showed the need to adjust vital-sign thresholds for different age groups, especially newborns and children.
+
+Because the test included only 20 cases, the 90% agreement is an encouraging preliminary result, not proof of clinical accuracy.
+
+Documented age-calibration limitation: [`validation_dataset_20.md`](docs/validation/validation_dataset_20.md).
+
+### 3. Overall Findings
+
+The two studies measure different aspects of performance:
+- Patient outcome validation examines how well the scores align with actual patient outcomes.
+- Clinician validation examines how closely the system's assessments match clinicians' judgments.
+
+Together, the results show that the system has potential, but also has important limitations, particularly around under-triage and age-specific scoring.
+
+### 4. Detailed Validation Reports
+[Scoring validation results and limitations](docs/validation/scoring_validation.md)  
+[20-case clinician validation](docs/validation/validation_dataset_20.md)
 
 ## Security
 

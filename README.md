@@ -8,7 +8,15 @@ A rule-based clinical triage and prioritization engine. It takes an emergency-de
 
 ## Problem
 
-In an emergency department, every minute matters. Doctors and nurses need to quickly identify which patients need urgent care. However, existing triage tools have two main limitations. Some use complex AI/ML models that give a risk score but cannot clearly explain why. Others use simple rules or checklists that are easy to understand but may miss how multiple symptoms and warning signs work together. This can be dangerous because some seriously ill patients may not show obvious warning signs at first. For example, an older adult may have unusual symptoms, a newborn may have a fever, or a patient may be developing shock even when their vital signs seem almost normal. The goal is to build a triage tool that considers multiple warning signs together, clearly explains why a patient may need urgent attention, and helps clinicians make informed decisions without replacing their judgment.
+In an emergency department, every minute matters. Doctors and nurses need to quickly identify which patients need urgent care.
+
+However, existing triage tools have two main limitations.
+- Some use complex AI/ML models that give a risk score but cannot clearly explain why.
+- Others use simple rules or checklists that are easy to understand but may miss how multiple symptoms and warning signs work together.
+
+This can be dangerous because some seriously ill patients may not show obvious warning signs at first. For example, an older adult may have unusual symptoms, a newborn may have a fever, or a patient may be developing shock even when their vital signs seem almost normal.
+
+The goal is to build a triage tool that considers multiple warning signs together, clearly explains why a patient may need urgent attention, and helps clinicians make informed decisions without replacing their judgment.
 
 ## Solution
 

@@ -20,7 +20,13 @@ The goal is to build a triage tool that considers multiple warning signs togethe
 
 ## Solution
 
-TriageWiseProdrome uses clear, weighted rules to estimate how urgently a patient needs care instead of relying on a black-box AI/ML model. Each score comes with an explanation showing which rules contributed to it and how the patient's actual symptoms or vital signs affected the result. When information is missing, the system lowers its confidence rather than guessing. It also has a separate warning system to flag patients who may be seriously ill even when their symptoms or vital signs appear normal. These warnings do not change the patient's score but help clinicians recognize situations that may need closer attention. The system places patients in a queue based on their scores and explains why each patient is ranked where they are. The rules, thresholds, and warning patterns are stored in a database, making them easier to update without changing the code. Clinicians can also override the system's recommendations whenever needed. When a patient is registered, the system immediately confirms that the request has been received and is pending scoring. It calculates the patient's score in the background while the screen checks for the result. This allows the intake process to continue without waiting for the calculation to finish.
+TriageWiseProdrome uses clear, weighted rules to estimate how urgently a patient needs care instead of relying on a black-box AI/ML model. Each score comes with an explanation showing which rules contributed to it and how the patient's actual symptoms or vital signs affected the result.
+
+When information is missing, the system lowers its confidence rather than guessing. It also has a separate warning system to flag patients who may be seriously ill even when their symptoms or vital signs appear normal. These warnings do not change the patient's score but help clinicians recognize situations that may need closer attention.
+
+The system places patients in a queue based on their scores and explains why each patient is ranked where they are. The rules, thresholds, and warning patterns are stored in a database, making them easier to update without changing the code. Clinicians can also override the system's recommendations whenever needed.
+
+When a patient is registered, the system immediately confirms that the request has been received and is pending scoring. It calculates the patient's score in the background while the screen checks for the result. This allows the intake process to continue without waiting for the calculation to finish.
 
 ## Features
 

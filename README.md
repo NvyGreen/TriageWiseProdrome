@@ -12,9 +12,7 @@ In an emergency department, every minute matters. Doctors and nurses need to qui
 
 ## Solution
 
-TriageWiseProdrome scores acuity from transparent, weighted rules rather than a model, so every decision traces back to a specific rule and the patient's actual value. Missing data is handled honestly — it lowers confidence instead of guessing. A separate red-flag layer catches atypical "looks-normal-but-isn't" presentations without ever altering the score. Patients are ordered in a priority queue, and each ranking comes with a plain-language explanation. The rule weights, thresholds, and red-flag patterns all live in the database and are grounded in real emergency-department admission rates, so the system can be re-tuned without touching code — and the clinician can override any decision.
-
-Intake submission returns immediately with a `pending` status; scoring runs out-of-band in a separate worker process, and the UI polls until the result is ready.
+TriageWiseProdrome uses clear, weighted rules to estimate how urgently a patient needs care instead of relying on a black-box AI/ML model. Each score comes with an explanation showing which rules contributed to it and how the patient's actual symptoms or vital signs affected the result. When information is missing, the system lowers its confidence rather than guessing. It also has a separate warning system to flag patients who may be seriously ill even when their symptoms or vital signs appear normal. These warnings do not change the patient's score but help clinicians recognize situations that may need closer attention. The system places patients in a queue based on their scores and explains why each patient is ranked where they are. The rules, thresholds, and warning patterns are stored in a database, making them easier to update without changing the code. Clinicians can also override the system's recommendations whenever needed. When a patient is registered, the system immediately confirms that the request has been received and is pending scoring. It calculates the patient's score in the background while the screen checks for the result. This allows the intake process to continue without waiting for the calculation to finish.
 
 ## Features
 
@@ -26,7 +24,6 @@ Intake submission returns immediately with a `pending` status; scoring runs out-
 - **Plain-language summaries** — a narrative lede and a short risk-level blurb are composed from the stored breakdown at read time, deterministically.
 - **Presentation-mode toggle** — the same scored case renders two ways: full explanation (XAI) or score-and-level only (black-box), with the reasoning stripped at the response layer so it never leaves the server.
 - **Dual-score disagreement** — when a clinician supplies their own ESI, the system surfaces both side by side and names the drivers that account for the gap.
-- **Illustrative base rates** — an optional, clearly-labelled population admission-rate line from a static reference table, never presented as this patient's probability.
 - **Clinician override** — the system's ESI can be overridden with a structured reason; the override is logged, re-orders the queue by the clinician's value, and is recorded for later review.
 
 ## Architecture & tech stack
@@ -51,13 +48,13 @@ GET /queue ──> single indexed read of triage_queue, ordered by
 
 - **ScoringEngine** — produces a `SeverityResult` (score, ESI, drivers, data-quality signals) from an intake. The red-flag layer is injected into `score()`, so the engine attaches flag metadata to the result without owning flag logic — and the flag layer can be swapped or mocked independently. Flags never change the numeric score.
 - **RedFlagLayer** — evaluates each rule's condition tree and returns fired triggers. Read-only with respect to the score.
-- **Scorer (worker process)** — claims pending intakes with `FOR UPDATE SKIP LOCKED`. Claim, score, and status write share one transaction: a crash rolls back and the row stays `pending` for the next pass, so there are no stuck rows and no recovery job. The same claim mechanism lets several scorers run concurrently without coordination, so throughput can be increased by starting more of them. The deployment runs a single scorer; there is no autoscaling.
+- **Scorer (worker process)** — claims pending intakes with `FOR UPDATE SKIP LOCKED`. Claim, score, and status write share one transaction: a crash rolls back and the row stays `pending` for the next pass, so there are no stuck rows and no recovery job. The claim mechanism lets several scorers run concurrently without coordination, so throughput can be increased by starting more of them. The deployment runs a single scorer; there is no autoscaling.
 - **Queue** — persisted in `triage_queue`, ordered by a composite index on `(esi_band, flag_tier, arrival_time, intake_id)`. Rank is based on the position each record is ordered in.
 - **TriageService** — coordinates the services and owns persistence and event logging, but not the scoring workflow — the scorer does.
 
 Reference data (scoring weights, ESI bands, red-flag patterns, vital ranges, condition base rates) is loaded from CSV into lookup tables and read at runtime — changing a weight or a threshold needs no code change.
 
-**Stack:** Python · FastAPI · SQLAlchemy · Alembic · Pytest · PostgreSQL · React + Vite · honcho (web + worker) · deployed on Vercel.
+**Stack:** Python · FastAPI · SQLAlchemy · Alembic · Pytest · PostgreSQL · React · honcho (web + worker) · deployed on Vercel.
 
 ## Engineering & quality
 

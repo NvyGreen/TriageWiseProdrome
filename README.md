@@ -93,9 +93,10 @@ The system was tested on two datasets of 500 patient records each, derived from 
 | Outcome AUC | 0.853 | 0.664 |
 
 **What do these results mean?**  
-Exact agreement: How often the system assigned the same triage level as the outcome-based comparison.  
-Under-triage: Cases where the system assigned a lower priority than the patient's outcome suggested was appropriate. This is particularly concerning because it can delay urgent care.  
-Outcome AUC: How well the scores distinguish patients who are more likely to be admitted from those who are less likely to be admitted. Higher values indicate better discrimination.
+- Exact agreement: How often the system assigned the same triage level as the outcome-based comparison.  
+- Under-triage: Cases where the system assigned a lower priority than the patient's outcome suggested was appropriate. This is particularly concerning because it can delay urgent care.  
+- Outcome AUC: How well the scores distinguish patients who are more likely to be admitted from those who are less likely to be admitted. Higher values indicate better discrimination.
+
 Full numbers and limitations: [`scoring_validation.md`](docs/validation/scoring_validation.md).
 
 ### 2. Clinician Validation
@@ -105,8 +106,8 @@ The system was tested on a separate set of 20 patient cases. Its triage assessme
 Results: 18 out of 20 cases matched, achieving 90% agreement.
 
 The two cases where the system disagreed with clinicians were reviewed:  
-Case 1: Heavy bleeding after childbirth. The system assigned ESI-4, while the clinician assigned ESI-2. The system's red-flag mechanism detected the risk and moved the patient ahead of other ESI-4 patients in the priority queue. However, it did not change the patient's ESI score, so the system's assigned triage level still differed from the clinician's assessment.  
-Case 2: Newborn's vital signs assessed using adult standards. The system assigned ESI-1 to a 20-day-old newborn, while the clinician assigned ESI-2. Because the system used adult vital-sign thresholds instead of age-specific ranges, it interpreted the newborn's vital signs as more abnormal than they were. This led to a higher urgency level than the clinician assigned. Although this was a scoring error, it resulted in over-triage rather than under-triage.  
+- Case 1: Heavy bleeding after childbirth. The system assigned ESI-4, while the clinician assigned ESI-2. The system's red-flag mechanism detected the risk and moved the patient ahead of other ESI-4 patients in the priority queue. However, it did not change the patient's ESI score, so the system's assigned triage level still differed from the clinician's assessment.  
+- Case 2: Newborn's vital signs assessed using adult standards. The system assigned ESI-1 to a 20-day-old newborn, while the clinician assigned ESI-2. Because the system used adult vital-sign thresholds instead of age-specific ranges, it interpreted the newborn's vital signs as more abnormal than they were. This led to a higher urgency level than the clinician assigned. Although this was a scoring error, it resulted in over-triage rather than under-triage.  
 
 What this tells us: The system matched clinician assessments in 18 of the 20 cases, but the two disagreements revealed important areas for improvement. Case 1 highlighted the difference between the assigned ESI score and the priority queue position. Case 2 showed the need to adjust vital-sign thresholds for different age groups, especially newborns and children.
 
